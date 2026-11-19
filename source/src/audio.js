@@ -113,6 +113,8 @@ export class Sound {
     this._noise(0.06, { type: 'bandpass', f0: 1200, gain: 0.35, when: t + dur * 0.55 });
     this._noise(0.05, { type: 'highpass', f0: 3200, gain: 0.35, when: t + dur - 0.1 });
   }
+  swap() { this._tone(520, 240, 0.07, { type: 'square', gain: 0.14 }); setTimeout(() => this._tone(900, 520, 0.06, { type: 'square', gain: 0.12 }), 110); }
+  headshot() { this._tone(2400, 1800, 0.08, { type: 'triangle', gain: 0.26 }); this._tone(1200, 300, 0.18, { type: 'square', gain: 0.16 }); this._noise && this._noise(0.08, { type: 'highpass', f0: 3000, f1: 1500, gain: 0.2 }); }
   hit(head) { this._tone(head ? 1500 : 900, head ? 800 : 500, 0.07, { type: 'square', gain: head ? 0.18 : 0.12 }); }
   hurt() { this._noise(0.25, { f0: 500, f1: 120, gain: 0.7 }); this._tone(90, 50, 0.2, { gain: 0.5 }); }
   treeHit() { this._tone(110, 60, 0.18, { type: 'triangle', gain: 0.5 }); this._noise(0.12, { f0: 700, f1: 200, gain: 0.35 }); }

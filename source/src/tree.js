@@ -41,9 +41,27 @@ export function makeTree() {
   et.scale.set(16 / bw, 8.6 / bh, 16 / bw);
   et.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   group.add(et);
+  // Umbrella crown: the whole crown sits in the top ~15% of the tree, so the canopy starts above the head of a zombie
+  // (zombie = 0.765 x tree height) and above the player's eye line. The trunk stays bare below that.
+  { const sc = et.scale, base = 8.3, top = 11.7, y0 = 0.75, ytop = 8.6, kY = (top - base) / (ytop - y0), kXZ = 0.9, kLeaf = 0.8;
+    const lg = et.leavesMesh.geometry, lp = lg.attributes.position;
+    // leaves: move each 4-vertex quad as a rigid piece (keeps leaf shape), only its centre is remapped
+    for (let q = 0; q + 3 < lp.count; q += 4) {
+      let cx = 0, cy = 0, cz = 0; for (let k = 0; k < 4; k++) { cx += lp.getX(q + k); cy += lp.getY(q + k); cz += lp.getZ(q + k); } cx /= 4; cy /= 4; cz /= 4;
+      const ncx = cx * kXZ, ncz = cz * kXZ, ncy = (base + (cy * sc.y - y0) * kY) / sc.y;
+      for (let k = 0; k < 4; k++) lp.setXYZ(q + k, (lp.getX(q + k) - cx) * kLeaf + ncx, (lp.getY(q + k) - cy) * kLeaf + ncy, (lp.getZ(q + k) - cz) * kLeaf + ncz);
+    }
+    const bp = et.branchesMesh.geometry.attributes.position;
+    for (let i = 0; i < bp.count; i++) bp.setXYZ(i, bp.getX(i) * kXZ, (base + (bp.getY(i) * sc.y - y0) * kY) / sc.y, bp.getZ(i) * kXZ);
+    for (const geo of [lg, et.branchesMesh.geometry]) { geo.attributes.position.needsUpdate = true; geo.boundingBox = null; geo.boundingSphere = null; geo.computeBoundingSphere(); }
+  }
   const leafMat = et.leavesMesh.material;
   const canopy = null;
   const rootMat = et.branchesMesh.material.clone(); rootMat.color = new THREE.Color(0xb59b86);
+
+  // sturdier trunk to read as a proper olive trunk under the high canopy
+  { const tm = et.branchesMesh.material.clone(); tm.color = new THREE.Color(0xd8c4ae);
+    group.add(taperTube([new THREE.Vector3(0, -0.1, 0), new THREE.Vector3(0.05, 3.0, 0.03), new THREE.Vector3(-0.03, 6.0, 0.0), new THREE.Vector3(0, 10.2, 0)], t => 0.72 * (1 - 0.5 * t), tm, 24, 14)); }
 
   // Exposed roots
   const rootN = 9;
@@ -63,12 +81,12 @@ export function makeTree() {
 
   // Wooden fence ring
   const fenceMat = new THREE.MeshStandardMaterial({ color: 0x8a6a42, roughness: 1 });
-  const R = 3.9, posts = 16;
+  const R = 3.9, posts = 16; const fenceG = new THREE.Group(); group.add(fenceG);
   for (let i = 0; i < posts; i++) {
     const a = (i / posts) * Math.PI * 2;
     const post = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.0, 0.16), fenceMat);
     post.position.set(Math.cos(a) * R, 0.5, Math.sin(a) * R); post.castShadow = true;
-    group.add(post);
+    fenceG.add(post);
     const a2 = ((i + 1) / posts) * Math.PI * 2;
     const x1 = Math.cos(a) * R, z1 = Math.sin(a) * R, x2 = Math.cos(a2) * R, z2 = Math.sin(a2) * R;
     const len = Math.hypot(x2 - x1, z2 - z1);
@@ -76,7 +94,7 @@ export function makeTree() {
       const rail = new THREE.Mesh(new THREE.BoxGeometry(len, 0.08, 0.06), fenceMat);
       rail.position.set((x1 + x2) / 2, hy, (z1 + z2) / 2);
       rail.rotation.y = -Math.atan2(z2 - z1, x2 - x1);
-      group.add(rail);
+      fenceG.add(rail);
     }
   }
 
@@ -96,5 +114,5 @@ export function makeTree() {
   plaque.position.set(-2.6, 0.25, 3.0); plaque.rotation.y = 0.4; plaque.castShadow = true;
   group.add(plaque);
 
-  return { group, leafMat, canopy, tree: et };
+  return { group, leafMat, canopy, tree: et, fence: fenceG };
 }

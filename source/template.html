@@ -23,9 +23,9 @@ canvas#c{position:absolute;inset:0;width:100%;height:100%;display:block;touch-ac
 .btn.down{background:rgba(242,195,91,.55);transform:scale(.94)}
 #btnFire{right:max(26px,env(safe-area-inset-right));bottom:max(26px,env(safe-area-inset-bottom));width:104px;height:104px;background:rgba(229,72,58,.45);border-color:rgba(255,160,150,.8)}
 #btnReload{right:150px;bottom:34px;width:58px;height:58px}
-#btnGren{right:34px;bottom:146px;width:58px;height:58px}
-#btnSwitch{right:118px;bottom:112px;width:58px;height:58px}
-#btnAct{right:210px;bottom:100px;width:70px;height:70px;background:rgba(95,208,106,.5);border-color:#bff5c4;animation:pulse 1s infinite}
+#btnGren{right:176px;bottom:100px;width:58px;height:58px}
+#btnSwitch{right:26px;bottom:140px;width:136px;height:50px;border-radius:26px;flex-direction:row;gap:6px;background:rgba(242,195,91,.28);border-color:var(--gold);font-size:13px;padding:0 10px}#btnSwitch svg{width:20px;height:20px;flex:none}#btnSwitch .sw{display:flex;flex-direction:column;line-height:1.15;text-align:center}#btnSwitch .sw b{font-size:14px}#btnSwitch .sw small{opacity:.75;font-size:11px}
+#btnAds{right:240px;bottom:112px;width:58px;height:58px;font-size:12px}#btnAds.on{background:rgba(242,195,91,.65);border-color:var(--gold)}#btnSwitch.pulse{background:rgba(242,195,91,.8);transform:scale(1.08)}#btnAct{right:250px;bottom:40px;width:70px;height:70px;background:rgba(95,208,106,.5);border-color:#bff5c4;animation:pulse 1s infinite}
 #btnSettings{right:12px;top:10px;width:40px;height:40px;position:absolute}
 @keyframes pulse{50%{transform:scale(1.08)}}
 #joyBase{position:absolute;width:120px;height:120px;margin:-60px 0 0 -60px;border-radius:50%;border:2px solid rgba(255,255,255,.35);background:rgba(255,255,255,.08);display:none;pointer-events:none}
@@ -45,7 +45,7 @@ canvas#c{position:absolute;inset:0;width:100%;height:100%;display:block;touch-ac
 #vig.on{opacity:1;transition:none}
 #top{position:absolute;left:12px;right:60px;top:8px;display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none;font-size:14px;font-weight:700;text-shadow:0 1px 3px #000}
 #top .col{display:flex;flex-direction:column;gap:3px;min-width:90px}
-#treeWrap{width:min(280px,34vw);text-align:center}
+#treeWrap{width:min(280px,calc(var(--vw)*34));text-align:center}
 .bar{height:12px;border-radius:8px;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.4);overflow:hidden}
 .bar i{display:block;height:100%;width:100%;background:linear-gradient(#7be07f,#3da447);transition:width .15s}
 #treeBar i.low{background:linear-gradient(#f08a6a,#c23a24)}
@@ -53,21 +53,23 @@ canvas#c{position:absolute;inset:0;width:100%;height:100%;display:block;touch-ac
 #pBar i{background:linear-gradient(#ff8a7a,#d8392a)}
 #ammo{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);text-align:center;font-weight:800;text-shadow:0 1px 3px #000;pointer-events:none}
 #ammo .w{font-size:12px;color:var(--gold2);letter-spacing:.5px}
+#ammo #wSlots{font-size:11px;opacity:.85}#ammo #wSlots .on{color:#fff;font-weight:800;text-decoration:underline}
+#hsTxt{position:absolute;left:50%;top:36%;transform:translateX(-50%);color:#ff4a3a;font-weight:900;font-size:22px;text-shadow:0 2px 6px #000;opacity:0;pointer-events:none;z-index:6;white-space:nowrap}#hsTxt.show{animation:hs .7s ease-out forwards}@keyframes hs{0%{opacity:0;transform:translate(-50%,6px) scale(.7)}15%{opacity:1;transform:translate(-50%,0) scale(1.15)}100%{opacity:0;transform:translate(-50%,-18px) scale(1)}}
 #ammo .n{font-size:26px;line-height:1}
 #ammo .n small{font-size:14px;opacity:.8}
 #ammo .g{font-size:12px;opacity:.9}
 #crateArrow{position:absolute;left:50%;top:52px;width:130px;margin-left:-65px;text-align:center;font-size:12px;font-weight:700;pointer-events:none;text-shadow:0 1px 3px #000}
 #crateArrow .ar{display:inline-block;font-size:26px;color:var(--green);transition:transform .1s}
-#banner{position:absolute;left:0;right:0;top:24%;text-align:center;font-size:clamp(34px,8vw,64px);font-weight:900;color:var(--gold2);text-shadow:0 3px 12px #000,0 0 30px rgba(242,195,91,.6);opacity:0;pointer-events:none;letter-spacing:2px}
+#banner{position:absolute;left:0;right:0;top:24%;text-align:center;font-size:clamp(34px,calc(var(--vw)*8),64px);font-weight:900;color:var(--gold2);text-shadow:0 3px 12px #000,0 0 30px rgba(242,195,91,.6);opacity:0;pointer-events:none;letter-spacing:2px}
 #banner.show{animation:ban 2.6s ease-out}
 @keyframes ban{0%{opacity:0;transform:scale(1.5)}12%{opacity:1;transform:scale(1)}80%{opacity:1}100%{opacity:0}}
-#toast{position:absolute;left:50%;top:78px;transform:translateX(-50%);background:var(--panel);border:1px solid var(--line);padding:6px 14px;border-radius:18px;font-size:13px;opacity:0;transition:opacity .3s;pointer-events:none;max-width:70vw;text-align:center}
+#toast{position:absolute;left:50%;top:78px;transform:translateX(-50%);background:var(--panel);border:1px solid var(--line);padding:6px 14px;border-radius:18px;font-size:13px;opacity:0;transition:opacity .3s;pointer-events:none;max-width:calc(var(--vw)*70);text-align:center}
 #toast.show{opacity:1}
-#story{position:absolute;left:8vw;right:8vw;bottom:30%;text-align:center;padding:8px 16px;background:rgba(0,0,0,.35);border-radius:12px;font-size:clamp(15px,3vw,22px);line-height:1.5;font-weight:600;text-shadow:0 2px 8px #000;pointer-events:none;opacity:0;transition:opacity .8s}
+#story{position:absolute;left:calc(var(--vw)*8);right:calc(var(--vw)*8);bottom:30%;text-align:center;padding:8px 16px;background:rgba(0,0,0,.35);border-radius:12px;font-size:clamp(15px,calc(var(--vw)*3),22px);line-height:1.5;font-weight:600;text-shadow:0 2px 8px #000;pointer-events:none;opacity:0;transition:opacity .8s}
 #story.show{opacity:1}
 .screen{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:auto;background:radial-gradient(ellipse at 50% 40%,rgba(20,14,6,.55),rgba(8,5,2,.88));z-index:20;padding:10px}
 .card{max-width:520px;width:92%;max-height:96%;overflow:auto;text-align:center;padding:16px 20px;background:var(--panel);border:1px solid var(--line);border-radius:18px;box-shadow:0 10px 40px rgba(0,0,0,.6)}
-.card h1{margin:0 0 4px;font-size:clamp(24px,5.4vw,38px);color:var(--gold2);text-shadow:0 2px 12px rgba(242,195,91,.5)}
+.card h1{margin:0 0 4px;font-size:clamp(24px,calc(var(--vw)*5.4),38px);color:var(--gold2);text-shadow:0 2px 12px rgba(242,195,91,.5)}
 .card p{margin:2px 0 12px;opacity:.9;font-size:14px}
 .card h2{margin:0 0 8px;color:var(--gold2);font-size:20px}
 .cta{display:block;width:100%;margin:8px 0;padding:12px;border-radius:12px;border:1px solid var(--gold);background:linear-gradient(#f5cd6e,#c8923a);color:#2a1a05;font-size:17px;font-weight:800;font-family:inherit}
@@ -77,7 +79,7 @@ canvas#c{position:absolute;inset:0;width:100%;height:100%;display:block;touch-ac
 .row select,.row input[type=range]{font-family:inherit;font-size:14px;background:#2b2113;color:#fff;border:1px solid var(--line);border-radius:8px;padding:5px;max-width:55%}
 .row input[type=range]{padding:0;width:50%}
 .tiny{font-size:12px;opacity:.7}
-#shop{position:absolute;top:104px;bottom:8px;width:min(340px,44vw);background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px;pointer-events:auto;overflow:auto;z-index:15;right:10px}
+#shop{position:absolute;top:104px;bottom:8px;width:min(340px,calc(var(--vw)*44));background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px;pointer-events:auto;overflow:auto;z-index:15;right:10px}
 #shop h3{margin:0 0 4px;color:var(--gold2);font-size:16px}
 .item{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;margin:5px 0;background:rgba(255,255,255,.07);border-radius:10px;font-size:13px}
 .item b{color:var(--gold2)}
@@ -89,18 +91,40 @@ canvas#c{position:absolute;inset:0;width:100%;height:100%;display:block;touch-ac
 @keyframes rot{0%,30%{transform:rotate(0)}70%,100%{transform:rotate(-90deg)}}
 #rotate.on{display:flex}
 #rotate button{margin-top:16px;padding:10px 22px;border-radius:12px;border:1px solid var(--gold);background:rgba(255,255,255,.08);color:#fff;font-size:15px;font-family:inherit}
-#arMsg{position:absolute;left:0;right:0;bottom:22%;text-align:center;font-size:18px;font-weight:700;text-shadow:0 2px 8px #000;pointer-events:none;padding:0 10vw}
-@media (max-height:380px){#btnFire{width:88px;height:88px}#btnReload{right:130px;bottom:30px;width:50px;height:50px}#btnGren{right:30px;bottom:124px;width:50px;height:50px}#btnSwitch{right:104px;bottom:96px;width:50px;height:50px}#btnAct{right:190px;bottom:84px}}
+#arMsg{position:absolute;left:0;right:0;bottom:22%;text-align:center;font-size:18px;font-weight:700;text-shadow:0 2px 8px #000;pointer-events:none;padding:0 calc(var(--vw)*10)}
+#calib{position:absolute;left:8px;right:8px;bottom:8px;z-index:18;pointer-events:auto}.cbox{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px;max-width:640px;margin:0 auto}.ctitle{color:var(--gold2);font-weight:700;margin-bottom:6px;text-align:center}.cnote{margin:4px 0 8px;text-align:center;font-size:14px}.cbox .row{display:flex;gap:8px;align-items:center}.cbox input{flex:1}.btns{display:flex;gap:8px}.btns .cta{margin:6px 0;flex:1}
+.card.wide{max-width:760px;width:100%}.lgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.lw{padding:12px 6px;border-radius:12px;border:1px solid var(--gold);background:rgba(255,255,255,.06);color:var(--gold2);font-family:inherit;font-size:16px;display:flex;flex-direction:column;gap:4px;align-items:center}.lw span{font-size:12px;color:#ddd}
+body.land .lgrid{grid-template-columns:repeat(4,1fr)}body.land #loadout h2{margin:0}
+
+.card.brief{text-align:start}.brief h2{text-align:center}.brief h4{margin:6px 0 2px;color:var(--gold2);font-size:14px}.brief p,.brief li{font-size:13px;margin:2px 0}.brief ul{margin:2px 0;padding-inline-start:18px}.brief .warn{color:#ffd27a;font-weight:700}.bgrid{display:block}
+.mcol{display:block}.sgrid{display:block}.ebtns{display:block}
+body.land .card{padding:10px 18px}body.land .card h1{font-size:clamp(22px,calc(var(--vw)*4.2),34px)}body.land .card p{margin:2px 0 8px}body.land #menu .card{max-width:760px;display:flex;align-items:center;gap:26px;text-align:center}body.land #menu .mcol{flex:1}body.land #settings .card{max-width:760px}body.land .sgrid{display:grid;grid-template-columns:1fr 1fr;gap:0 26px}body.land .ebtns{display:flex;gap:10px}body.land .ebtns .cta{flex:1}body.land .bgrid{display:grid;grid-template-columns:1.1fr 1fr;gap:20px}body.land .card.wide{max-width:820px}body.land .cta{padding:9px;margin:5px 0}body.land #shop{top:60px}
+
+body:not(.land) #shop{top:auto;left:8px;right:8px;width:auto;height:calc(var(--vh)*46);bottom:8px}
+
+body.short #btnFire{width:88px;height:88px}body.short #btnReload{right:130px;bottom:30px;width:50px;height:50px}body.short #btnGren{right:160px;bottom:84px;width:50px;height:50px}body.short #btnSwitch{right:26px;bottom:122px;width:122px;height:44px}body.short #btnAds{right:214px;bottom:84px;width:50px;height:50px}body.short #btnAct{right:284px;bottom:30px}
+
+
+#threat{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}#radar{position:absolute;left:10px;top:66px;width:96px;height:96px;border-radius:50%;background:rgba(0,0,0,.38);border:1px solid var(--line);pointer-events:none}
+body.xr #joyBase{display:none!important}
+.pop{position:absolute;top:44%;transform:translateX(-50%);font-weight:900;font-size:20px;color:#ffd66b;text-shadow:0 2px 6px #000;pointer-events:none;z-index:6;white-space:nowrap;animation:popUp 1s ease-out forwards}.pop.head{color:#ff6a3a}.pop.big{font-size:28px;color:#fff;top:36%}@keyframes popUp{0%{opacity:0;transform:translate(-50%,8px) scale(.6)}15%{opacity:1;transform:translate(-50%,0) scale(1.15)}100%{opacity:0;transform:translate(-50%,-46px) scale(1)}}
+body.land #shop{right:auto;left:10px}body.prepping #radar{display:none}
+:root{--vw:1vw;--vh:1vh}
+#uiIn{position:absolute;inset:0}
+body.vr #c,body.vr #camvid,body.vr #uiIn{position:fixed;left:0;right:auto;top:0;bottom:auto;width:calc(var(--vw)*100);height:calc(var(--vh)*100);transform-origin:0 0}
+body.vr90 #c,body.vr90 #camvid,body.vr90 #uiIn{transform:translateX(calc(var(--vh)*100)) rotate(90deg)}
+body.vrm90 #c,body.vrm90 #camvid,body.vrm90 #uiIn{transform:translateY(calc(var(--vw)*100)) rotate(-90deg)}
+body.vr.xr #c{position:absolute;width:100%;height:100%;transform:none}
 </style>
 </head>
 <body>
 <div id="app">
   <video id="camvid" playsinline muted autoplay></video>
   <canvas id="c"></canvas>
-  <div id="ui">
+  <div id="ui"><div id="uiIn">
     <div id="touch"></div>
     <div id="joyBase"><div id="joyKnob"></div></div>
-    <div id="hud" class="hidden">
+    <div id="hud" class="hidden"><canvas id="threat"></canvas><canvas id="radar" width="120" height="120"></canvas>
       <div id="joyHint"></div>
       <div id="vig"></div>
       <div id="cross"></div><div id="hitmark"></div>
@@ -111,16 +135,18 @@ canvas#c{position:absolute;inset:0;width:100%;height:100%;display:block;touch-ac
       </div>
       <div id="crateArrow" class="hidden"><div class="ar" id="arArrow">▲</div><div id="crateName" data-t="crate"></div><div id="crateDist"></div></div>
       <div class="bar" id="pBar"><i></i></div>
-      <div id="ammo"><div class="w" id="wName"></div><div class="n"><span id="mag">0</span> <small>/ <span id="res">0</span></small></div><div class="g" id="gCount"></div></div>
+      <div id="ammo"><div class="w" id="wSlots"></div><div class="w" id="wName"></div><div class="n"><span id="mag">0</span> <small>/ <span id="res">0</span></small></div><div class="g" id="gCount"></div></div>
       <button class="btn" id="btnFire"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><path d="M11 1h2v5h-2zM11 18h2v5h-2zM1 11h5v2H1zM18 11h5v2h-5z"/></svg></button>
       <button class="btn" id="btnReload"><svg viewBox="0 0 24 24"><path d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg></button>
       <button class="btn" id="btnGren"><svg viewBox="0 0 24 24"><circle cx="12" cy="14" r="7"/><path d="M10 3h5v3h-5z"/></svg></button>
-      <button class="btn" id="btnSwitch"><svg viewBox="0 0 24 24"><path d="M7 7h10V4l5 5-5 5v-3H7zM17 17H7v3l-5-5 5-5v3h10z"/></svg></button>
+      <button class="btn" id="btnSwitch"><svg viewBox="0 0 24 24"><path d="M7 7h10V4l5 5-5 5v-3H7zM17 17H7v3l-5-5 5-5v3h10z"/></svg><span class="sw"><b id="swCur"></b><small id="swNext"></small></span></button>
+      <button class="btn" id="btnAds"><span>כוונת</span></button>
       <button class="btn hidden" id="btnAct"><span data-t="refill">תחמושת</span></button>
       <button class="btn hidden" id="btnShopT" style="right:12px;top:58px;width:40px;height:40px;position:absolute"><svg viewBox="0 0 24 24"><path d="M7 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM1 2v2h2l3.6 7.6-1.4 2.4A2 2 0 0 0 7 17h12v-2H7.4l1.1-2h7.5a2 2 0 0 0 1.7-1l3.6-6.5A1 1 0 0 0 20.4 4H5.2l-.9-2zM17 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg></button>
       <button class="btn" id="btnSettings"><svg viewBox="0 0 24 24"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7 7 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7 7 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7 7 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7 7 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg></button>
     </div>
-    <div id="banner"></div><div id="toast"></div><div id="story"></div><div id="arMsg" class="hidden"></div>
+    <div id="calib" class="hidden"><div class="cbox"><div class="ctitle">קבע את גובה העץ (הזומבים יותאמו אליו)</div><div class="row"><input type="range" id="calH" min="0.6" max="3" step="0.05" value="2"><b id="calV"></b></div><div class="btns"><button class="cta" id="btnCalGo">התחל משחק</button></div></div></div>
+    <div id="hsTxt"></div><div id="banner"></div><div id="toast"></div><div id="story"></div><div id="arMsg" class="hidden"></div>
 
     <div id="shop" class="hidden">
       <h3 data-t="prepTitle">הכנה</h3>
@@ -129,25 +155,41 @@ canvas#c{position:absolute;inset:0;width:100%;height:100%;display:block;touch-ac
       <button class="cta" id="btnStart" data-t="startWave">התחל גל</button>
     </div>
 
+    <div id="brief" class="screen hidden"><div class="card wide brief"><h2>איך משחקים</h2>
+      <div class="bgrid">
+        <div class="bcol"><h4>המטרה</h4><p>הגן על עץ הזית מפני 10 גלי זומבים. אם העץ נהרס המשחק נגמר. בין גל לגל יש הכנה וחנות.</p>
+        <h4>שליטה</h4><ul><li>תנועה: ג׳ויסטיק שמאלי</li><li>כיוון: הזז את הטלפון (ג׳יירו) או גרור</li><li>ירי: הכפתור האדום. ירייה בראש = חיסול</li><li>⇄ החלפת נשק (תמיד 2 נשקים), רימון וטעינה</li></ul></div>
+        <div class="bcol"><h4>הגדרות חשובות</h4><div id="brAR" class="hidden"><p class="warn">AR: כוון לרצפה והקש כדי לשתול את העץ, ואז קבע ידנית את גובהו בסליידר (הזומבים מתאימים את עצמם).</p></div>
+        <div class="row"><span>רגישות</span><input type="range" id="brSens" min="0.4" max="2.2" step="0.05"></div>
+        <div class="row"><span>עוצמת קול</span><input type="range" id="brVol" min="0" max="1" step="0.05"></div></div>
+      </div>
+      <button class="cta" id="btnBriefGo">הבנתי, בואו נתחיל</button></div></div>
+
+    <div id="loadout" class="screen hidden"><div class="card wide"><h2>בחר נשק נוסף</h2><p class="cnote">האקדח תמיד איתך. בחר נשק אחד להתחלה:</p><div id="lgrid" class="lgrid"></div></div></div>
+
     <div id="menu" class="screen">
       <div class="card">
-        <h1 data-t="title">גולני: שומר העץ</h1>
+        <div class="mcol mt"><h1 data-t="title">גולני: שומר העץ</h1>
         <p data-t="subtitle"></p>
-        <button class="cta" id="btnPlay" data-t="play">שחק</button>
+        <div class="tiny"><span data-t="hiscore">שיא</span>: <b id="hiTxt">0</b></div></div>
+        <div class="mcol mb"><button class="cta" id="btnPlay" data-t="play">שחק</button>
         <button class="cta sec" id="btnPlayAR" data-t="playAR">AR</button>
-        <button class="cta sec" id="btnMenuSettings" data-t="settings">הגדרות</button>
-        <div class="tiny"><span data-t="hiscore">שיא</span>: <b id="hiTxt">0</b></div>
+        <button class="cta sec" id="btnMenuSettings" data-t="settings">הגדרות</button></div>
       </div>
     </div>
 
     <div id="settings" class="screen hidden">
       <div class="card">
         <h2 data-t="settings">הגדרות</h2>
+        <div class="sgrid">
         <div class="row"><span data-t="language">שפה</span><select id="setLang"><option value="he">עברית</option><option value="en">English</option></select></div>
         <div class="row"><span data-t="quality">איכות</span><select id="setQual"><option value="auto" data-t="qAuto">auto</option><option value="high" data-t="qHigh">high</option><option value="med" data-t="qMed">med</option><option value="low" data-t="qLow">low</option></select></div>
         <div class="row"><span data-t="gyro">ג׳יירו</span><input type="checkbox" id="setGyro" checked></div>
         <div class="row"><span data-t="sens">רגישות</span><input type="range" id="setSens" min="0.4" max="2.2" step="0.05" value="1"></div>
+        <div class="row"><span data-t="arSize">גודל AR</span><input type="range" id="setArSize" min="0.6" max="3" step="0.05" value="2"></div>
         <div class="row"><span data-t="volume">עוצמה</span><input type="range" id="setVol" min="0" max="1" step="0.05" value="0.8"></div>
+        </div>
+        <button class="cta sec hidden" id="btnReplant">שתול את העץ מחדש (AR)</button>
         <button class="cta" id="btnSetClose" data-t="close">סגור</button>
       </div>
     </div>
@@ -157,11 +199,11 @@ canvas#c{position:absolute;inset:0;width:100%;height:100%;display:block;touch-ac
         <h1 id="endTitle"></h1>
         <p id="endLine"></p>
         <p><span data-t="score">ניקוד</span>: <b id="endScore">0</b> &nbsp; <span data-t="hiscore">שיא</span>: <b id="endHi">0</b></p>
-        <button class="cta" id="btnAgain" data-t="again">שוב</button>
-        <button class="cta sec" id="btnToMenu" data-t="toMenu">תפריט</button>
+        <div class="ebtns"><button class="cta" id="btnAgain" data-t="again">שוב</button>
+        <button class="cta sec" id="btnToMenu" data-t="toMenu">תפריט</button></div>
       </div>
     </div>
-  </div>
+  </div></div>
   <div id="rotate"><svg viewBox="0 0 24 24"><path d="M16.5 2h-9A2.5 2.5 0 0 0 5 4.5v15A2.5 2.5 0 0 0 7.5 22h9a2.5 2.5 0 0 0 2.5-2.5v-15A2.5 2.5 0 0 0 16.5 2zM12 21a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm5-4H7V5h10z"/></svg><div data-t="rotate">סובב</div><button id="btnRotOk" data-t="continueAnyway">המשך בכל זאת</button></div>
 </div>
 <script>/*__JS__*/</script>

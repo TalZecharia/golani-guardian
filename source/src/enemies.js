@@ -86,7 +86,7 @@ function buildSkinned(type, masked) {
   model.scale.multiplyScalar(src.norm); model.position.y = src.dy; g.add(model);
   const t = TINT[type], tint = new THREE.Color(src.cfg.tint !== undefined ? src.cfg.tint : 0xdfeccf).multiply(new THREE.Color().setRGB(t[0], t[1], t[2]));
   model.traverse(o => {
-    if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; const m = Array.isArray(o.material) ? o.material.map(x => x.clone()) : o.material.clone(); (Array.isArray(m) ? m : [m]).forEach(x => { if (x.color) x.color.multiply(tint); }); o.material = m; }
+    if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; const m = Array.isArray(o.material) ? o.material.map(x => x.clone()) : o.material.clone(); (Array.isArray(m) ? m : [m]).forEach(x => { if (x.color) x.color.multiply(tint); if (x.map && x.emissive) { x.emissiveMap = x.map; x.emissive.setScalar(0.32); } }); o.material = m; }
   });
   g.scale.setScalar(def.scale); g.updateMatrixWorld(true);
   const head = findBone(model, /head$/i) || findBone(model, /head/i);
@@ -124,7 +124,7 @@ export class Enemies {
     const e = {
       type, def, group: z0.g, parts: z0, masked,
       hp: def.hp * hpMul, max: def.hp * hpMul,
-      speed: def.speed * (0.92 + Math.random() * 0.2) * (1 + 0.015 * wave), dmg: def.dmg * (1 + 0.05 * (wave - 1)),
+      speed: def.speed * 0.727 * (0.92 + Math.random() * 0.2) * (1 + 0.015 * wave), dmg: def.dmg * (1 + 0.05 * (wave - 1)),
       state: 'walk', t: Math.random() * 6, atk: 0, flash: 0, slam: 5 + Math.random() * 2, summon: 12, dead: 0,
       mixer: z0.mixer || null, acts: z0.acts || null, act: null, deathLen: 0,
       big: type === 'heavy' || type === 'boss' || type === 'miniboss', growl: 2 + Math.random() * 6, knock: new THREE.Vector3()
@@ -194,7 +194,7 @@ export class Enemies {
 
       // --- decide goal ---
       let gx = 0, gz = 0, chasing = false;
-      const aggro = e.type === 'boss' || e.type === 'miniboss' ? 8 : 11;
+      const aggro = G.mode === 'xr' ? (e.type === 'boss' || e.type === 'miniboss' ? 2.4 : 1.8) / (G.arS || 0.8) : (e.type === 'boss' || e.type === 'miniboss' ? 8 : 11); // AR: only chase you when you are within ~1.8 m
       if (r > ARENA_R - 1.5) {
         const a = Math.atan2(p.z, p.x); let bi = 0, bd = 9;
         for (let k = 0; k < GATES; k++) { const d = Math.abs(Math.atan2(Math.sin(a - gateAngle(k)), Math.cos(a - gateAngle(k)))); if (d < bd) { bd = d; bi = k; } }
@@ -205,14 +205,14 @@ export class Enemies {
 
       // --- barricade blocking ---
       let blocked = null;
-      if (r > G.barrR - 0.3 && r < G.barrR + 3.5) {
+      if (G.mode !== 'xr' && r > G.barrR - 0.3 && r < G.barrR + 3.5) {
         for (const b of G.barricades) {
           if (b.hp <= 0) continue;
           if (Math.hypot(p.x - b.x, p.z - b.z) < 3.0) { blocked = b; break; }
         }
       }
       // --- attack ranges ---
-      const treeReach = FENCE_R + 0.9 * e.def.scale;
+      const treeReach = (this.G.fenceR || FENCE_R) + 0.9 * e.def.scale;
       let speedK = 1;
       if (blocked) {
         speedK = 0;
@@ -226,7 +226,7 @@ export class Enemies {
         if (e.type === 'bomber') { this.explode(e); continue; }
         if (e.atk <= 0) { e.atk = 0.9; G.damagePlayer(e.dmg, e); }
       }
-      if (e.type === 'bomber' && !blocked && dTree < FENCE_R + 2.2) { this.explode(e); continue; }
+      if (e.type === 'bomber' && !blocked && dTree < (this.G.fenceR || FENCE_R) + 2.2) { this.explode(e); continue; }
 
       // boss abilities
       if (e.type === 'boss' || e.type === 'miniboss') {
@@ -249,6 +249,7 @@ export class Enemies {
       e.knock.multiplyScalar(Math.max(0, 1 - dt * 7));
       // colliders (rocks, crates, fence)
       for (const c of G.colliders) {
+        if (c.rock && G.mode === 'xr') continue;
         const cx = p.x - c.x, cz = p.z - c.z, d = Math.hypot(cx, cz), min = c.r + 0.35 * e.def.scale;
         if (d < min && d > 1e-4) { p.x = c.x + (cx / d) * min; p.z = c.z + (cz / d) * min; }
       }

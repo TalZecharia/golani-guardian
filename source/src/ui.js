@@ -3,7 +3,7 @@ import { STR } from './i18n.js';
 export const $ = id => document.getElementById(id);
 
 const KEY = 'golani_guardian_v1';
-export const settings = { lang: 'he', quality: 'auto', gyro: true, sens: 1, vol: 0.8, hi: 0 };
+export const settings = { lang: 'he', quality: 'auto', gyro: true, sens: 1, arH: 2.0, vol: 0.8, hi: 0 };
 try {
   const s = JSON.parse(localStorage.getItem(KEY) || '{}');
   Object.assign(settings, s);

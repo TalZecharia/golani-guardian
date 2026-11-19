@@ -45,7 +45,12 @@ export class AR {
       if (!this.placing || !this.reticle.visible) return;
       this.placing = false; this.placed = true;
       const hit = this.lastHit;
-      if (hit && hit.createAnchor) hit.createAnchor().then(a => { this.anchor = a; }).catch(() => {});
+      this.anchor = null; this.anchorPos = null; this.floorSource = null; this.floorY = null; this.lost = false; this.noAnchor = !(hit && hit.createAnchor);
+      if (hit && hit.createAnchor) hit.createAnchor().then(a => {
+        this.anchor = a;
+        // keep re-grounding: a downward ray from the tree's anchor finds the floor under it, so the tree stays on the floor
+        try { session.requestHitTestSource({ space: a.anchorSpace, offsetRay: new XRRay({ x: 0, y: 0.6, z: 0 }, { x: 0, y: -1, z: 0 }) }).then(src => { this.floorSource = src; }).catch(() => {}); } catch (e) {}
+      }).catch(() => { this.noAnchor = true; });
       const pos = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3();
       this.reticle.matrix.decompose(pos, q, s);
       this.reticle.visible = false;
@@ -70,10 +75,20 @@ export class AR {
   update(frame) {
     if (this.anchor && frame) {
       const pose = frame.getPose(this.anchor.anchorSpace, this.G.renderer.xr.getReferenceSpace());
-      if (pose) { const p = pose.transform.position; (this.anchorPos || (this.anchorPos = new THREE.Vector3())).set(p.x, p.y, p.z); }
+      if (pose) { const p = pose.transform.position; (this.anchorPos || (this.anchorPos = new THREE.Vector3())).set(p.x, p.y, p.z); this.lost = false; }
+      else this.lost = true; // anchor not tracked right now: hide the arena instead of drawing it in the wrong place
+      if (this.floorSource) {
+        const fh = frame.getHitTestResults(this.floorSource);
+        if (fh.length) { const fp = fh[0].getPose(this.G.renderer.xr.getReferenceSpace()); if (fp) this.floorY = fp.transform.position.y; }
+      }
     }
-    if (!this.hitSource || !this.placing || !frame) return;
+    if (!this.hitSource || !frame || (!this.placing && !this.measuring)) return;
     const hits = frame.getHitTestResults(this.hitSource);
+    if (this.measuring && !this.placing) {
+      this.measureY = null;
+      if (hits.length) { const pose = hits[0].getPose(this.G.renderer.xr.getReferenceSpace()); if (pose) this.measureY = pose.transform.position.y; }
+      return;
+    }
     if (hits.length) {
       this.lastHit = hits[0];
       const pose = hits[0].getPose(this.G.renderer.xr.getReferenceSpace());

@@ -106,7 +106,7 @@ export function buildWorld(G) {
     ss.set(1, sy, 1); m4.compose(pp, qq, ss); wall.setMatrixAt(i, m4);
     wall.setColorAt(i, new THREE.Color().setHSL(0.1, 0.18, 0.5 + rnd() * 0.15));
   });
-  W.add(wall);
+  W.add(wall); G.wallMesh = wall;
 
   // ---- rocks (cover + colliders) ----
   const rockMat = new THREE.MeshStandardMaterial({ color: 0x8c8470, roughness: 1, flatShading: true });
@@ -120,7 +120,7 @@ export function buildWorld(G) {
     const rk = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), rockMat);
     rk.position.set(Math.cos(a) * r, s * 0.45, Math.sin(a) * r); rk.rotation.set(rnd() * 3, rnd() * 3, rnd() * 3); rk.scale.y = 0.7;
     rk.castShadow = true; rk.receiveShadow = true; W.add(rk);
-    G.colliders.push({ x: rk.position.x, z: rk.position.z, r: s * 0.9 });
+    G.colliders.push({ x: rk.position.x, z: rk.position.z, r: s * 0.9, rock: true });
     rockSpots.push(rk.position); rockPrims.push(rk);
   }
 
@@ -133,12 +133,12 @@ export function buildWorld(G) {
       if (ms.some(m => !m)) return;
       rockSpots.forEach((p, i) => {
         const src = ms[i % 3]; const m = new THREE.Mesh(src.geometry, src.material);
-        const sz = 1.3 + rnd() * 1.4; m.scale.setScalar(sz); m.position.set(p.x, 0.0, p.z); m.rotation.y = rnd() * 6; m.castShadow = true; m.receiveShadow = true; W.add(m);
+        const sz = 1.3 + rnd() * 1.4; m.scale.setScalar(sz); m.position.set(p.x, 0.0, p.z); m.rotation.y = rnd() * 6; m.castShadow = true; m.receiveShadow = true; W.add(m); (G.arHide = G.arHide || []).push(m); m.visible = G.mode !== 'xr';
       });
-      for (const r of G.rockPrims || []) r.visible = false;
+      G.rocksReal = true; for (const r of G.rockPrims || []) r.visible = false;
     }).catch(() => {});
   } catch (e) {}
-  G.rockPrims = rockPrims;
+  G.rockPrims = rockPrims; (G.arHide = G.arHide || []).push(...rockPrims);
 
   // ---- dry grass tufts ----
   const tufts = new THREE.InstancedMesh(new THREE.ConeGeometry(0.035, 0.22, 3), new THREE.MeshStandardMaterial({ color: 0xcdb460, roughness: 1 }), 900);
@@ -148,12 +148,12 @@ export function buildWorld(G) {
     const s = 0.6 + rnd() * 0.9; ss.set(s, s, s); m4.compose(pp, qq, ss); tufts.setMatrixAt(i, m4);
     tufts.setColorAt(i, new THREE.Color().setHSL(0.12 + rnd() * 0.03, 0.45, 0.45 + rnd() * 0.12));
   }
-  W.add(tufts);
+  W.add(tufts); (G.arHide = G.arHide || []).push(tufts);
 
   // ---- tree ----
   const tree = makeTree();
   W.add(tree.group);
-  G.tree.mesh = tree; G.colliders.push({ x: 0, z: 0, r: FENCE_R - 0.1 });
+  G.tree.mesh = tree; G.treeCollider = { x: 0, z: 0, r: FENCE_R - 0.1 }; G.colliders.push(G.treeCollider);
 
   // ---- barricades ----
   const plankMat = new THREE.MeshStandardMaterial({ color: 0x8e6b3e, roughness: 1 });

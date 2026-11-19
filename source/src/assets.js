@@ -19,6 +19,14 @@ async function load(file) {
   return obj;
 }
 
+// Mixamo clips may carry root motion; keep the hips in place on x/z so zombies don't slide or snap back
+function stripRootMotion(clip) {
+  for (const t of clip.tracks) {
+    if (/hips\.position$/i.test(t.name)) { const v = t.values; for (let i = 0; i < v.length; i += 3) { v[i] = v[0]; v[i + 2] = v[2]; } }
+  }
+  return clip;
+}
+
 export async function loadAssets() {
   let man = null;
   try { const r = await fetch(base + 'manifest.json', { cache: 'no-cache' }); if (r.ok) man = await r.json(); } catch (e) {}
@@ -34,7 +42,7 @@ export async function loadAssets() {
   }
   // animation files (Mixamo "without skin"); each file's first clip is used
   for (const k in man.anims || {}) {
-    try { const o = await load(man.anims[k]); if (o.animations[0]) A.clips[k] = o.animations[0]; } catch (e) { console.warn('anim asset failed', k, e); }
+    try { const o = await load(man.anims[k]); if (o.animations[0]) A.clips[k] = (k === 'death' ? o.animations[0] : stripRootMotion(o.animations[0])); } catch (e) { console.warn('anim asset failed', k, e); }
   }
   // clips embedded in the character files fill any gaps by name
   const find = (re) => { for (const z of A.zombies) for (const n in z.clips) if (re.test(n)) return z.clips[n]; };

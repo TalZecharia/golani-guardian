@@ -5,7 +5,20 @@ import { Input, Gyro } from './input.js';
 import { Enemies, TYPES } from './enemies.js';
 import { buildWorld, placeBarricades, GATES, gateAngle, ARENA_R, BARR_R, FENCE_R } from './world.js';
 import { WEAPONS, WEAPON_ORDER, buildGun, buildGrenadeMesh } from './weapons.js';
-import { AR, AR_SCALE } from './ar.js';
+import { AR } from './ar.js';
+import { initOrient, applyOrient, OR } from './orient.js';
+// AR sizing: G.arH = tree height in real metres (calibrated by the player). Zombies are ~0.45x the tree height.
+const arScale = () => 0.4135 * G.arH; // zombie (1.85m) = 0.765 x tree height
+function treeH0() {
+  if (!G._th) {
+    const g = G.tree.mesh.group, pk = g.scale.x, ws = world.scale.x; g.scale.setScalar(1); world.scale.setScalar(1); world.updateMatrixWorld(true);
+    const b = new THREE.Box3().setFromObject(g); const h = b.max.y - b.min.y; G._th = h > 5 && h < 16 ? h : 8.6;
+    g.scale.setScalar(pk); world.scale.setScalar(ws);
+  }
+  return G._th;
+}
+const treeK = () => G.arH / (treeH0() * arScale());
+function applyArScale() { world.scale.setScalar(arScale()); G.arS = arScale(); setTreeK(treeK()); }
 import { loadAssets, A } from './assets.js';
 import { $, t, settings, saveSettings, applyLang, toast, banner, story, hideStory, show, hide, hitmark, vignette } from './ui.js';
 
@@ -30,7 +43,7 @@ const G = window.__game = {
   THREE, renderer, scene, camera, world, mode: 'normal', state: 'menu', paused: false,
   colliders: [], barricades: [], crates: [], tree: { hp: 1000, max: 1000, mesh: null },
   pp: { x: 9, z: 6 }, eyeY: EYE, wave: 0, points: 0, score: 0, slow: 1, arPlacing: false, quality: 'med',
-  player: { hp: 100, max: 100, lastHit: -99 }, arOff: { x: 0, z: 0 }, arBase: new THREE.Vector3(), spawnR: ARENA_R + 8
+  player: { hp: 200, max: 200, lastHit: -99 }, arOff: { x: 0, z: 0 }, arBase: new THREE.Vector3(), spawnR: ARENA_R + 8
 };
 const sound = G.sound = new Sound();
 const input = new Input();
@@ -67,6 +80,15 @@ function customGun(id) {
   o.position.set(-(box.min.x + box.max.x) / 2 + pos[0], -box.max.y + 0.05 + pos[1], -box.max.z + 0.12 + pos[2]);
   g.userData.muzzleZ = (box.min.z - box.max.z) + 0.12 + (c.muzzleOffset || 0);
   o.traverse(m => { if (m.isMesh) { m.castShadow = false; m.frustumCulled = false; } });
+  // hands + sleeves so the gun doesn't float (positions relative to gun length)
+  const L = c.length || GUN_LEN[id], hz = c.hands || [0.34, 0.62], sleeve = 0x4a5238, glove = 0x2b2b28;
+  const mkArm = (x, y, z, rx, ry, sl) => {
+    const a = new THREE.Group(); const sv = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.085, sl), new THREE.MeshStandardMaterial({ color: sleeve, roughness: 0.9 })); sv.position.z = sl / 2;
+    const h = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.07, 0.11), new THREE.MeshStandardMaterial({ color: glove, roughness: 0.8 }));
+    a.add(sv, h); a.position.set(x, y, z); a.rotation.set(rx, ry, 0); g.add(a); return a;
+  };
+  mkArm(0.012, -0.075, 0.12 - L * hz[0], 0.28, -0.05, 0.42);
+  mkArm(-0.01, -0.045, 0.12 - L * hz[1], 0.2, 0.12, 0.5);
   return g;
 }
 function equipModel() {
@@ -99,31 +121,51 @@ function applyQuality(level) {
   resize();
 }
 let rotDismissed = false;
+let ads = false, adsK = 0, baseFov = 72;
 function resize() {
-  const w = innerWidth, h = innerHeight;
+  const w = OR.w, h = OR.h;
   $('rotate').classList.toggle('on', h > w * 1.1 && !rotDismissed);
-  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+  renderer.setSize(w, h, false); camera.aspect = w / h; baseFov = w >= h ? 72 : Math.min(100, 2 * Math.atan(Math.tan(36 * Math.PI / 180) * 1.25 / (w / h)) * 180 / Math.PI); camera.fov = baseFov * (1 - 0.38 * adsK); camera.updateProjectionMatrix();
 }
+initOrient(resize);
 addEventListener('resize', resize);
-addEventListener('orientationchange', () => setTimeout(resize, 200));
+addEventListener('orientationchange', () => setTimeout(applyOrient, 200));
 
 // ---------------- modes ----------------
+function setTreeK(k) {
+  G.fenceR = FENCE_R * k;
+  if (G.tree.mesh && G.tree.mesh.group) G.tree.mesh.group.scale.setScalar(k);
+  if (G.treeCollider) G.treeCollider.r = FENCE_R * k - 0.1;
+}
 function applyModeVisuals(mode) {
   G.mode = mode;
   const bg = mode === 'normal';
-  G.sky.visible = bg; G.ground.visible = bg; G.shadowPlane.visible = !bg;
+  G.sky.visible = bg; G.ground.visible = bg; G.shadowPlane.visible = !bg; if (G.wallMesh) G.wallMesh.visible = bg; if (G.tree.mesh && G.tree.mesh.fence) G.tree.mesh.fence.visible = bg; for (const b of G.barricades) b.group.visible = bg; document.body.classList.toggle('xr', mode === 'xr'); G.tree.max = mode === 'xr' ? 3000 : 1000; G.tree.hp = G.tree.max; for (const o of G.arHide || []) o.visible = bg && !(G.rockPrims && G.rockPrims.includes(o) && G.rocksReal);
   scene.fog = bg ? FOG : null;
   scene.background = bg ? new THREE.Color(0xe6d09c) : null;
   renderer.setClearAlpha(bg ? 1 : 0);
-  if (mode === 'xr') { world.scale.setScalar(AR_SCALE); camera.near = 0.05; camera.far = 200; sound.refDist = 4; G.spawnR = 24; placeBarricades(G, 11); G.arOff.x = G.arOff.z = 0; }
-  else { world.scale.setScalar(1); world.position.set(0, 0, 0); camera.near = 0.1; camera.far = 600; sound.refDist = 4; G.spawnR = ARENA_R + 8; placeBarricades(G, BARR_R); }
+  if (mode === 'xr') { G.arH = settings.arH || 2.0; camera.near = 0.05; camera.far = 200; sound.refDist = 4; G.spawnR = 3.6; placeBarricades(G, 1.9); G.arOff.x = G.arOff.z = 0; applyArScale(); }
+  else { setTreeK(1); world.scale.setScalar(1); world.position.set(0, 0, 0); camera.near = 0.1; camera.far = 600; sound.refDist = 4; G.spawnR = ARENA_R + 8; placeBarricades(G, BARR_R); }
   camera.updateProjectionMatrix();
 }
 
 // ---------------- helpers ----------------
 function placeWorldAR() {
   if (ar.anchorPos) G.arBase.copy(ar.anchorPos);
-  world.position.set(G.arBase.x + G.arOff.x, G.arBase.y, G.arBase.z + G.arOff.z); world.updateMatrixWorld(true);
+  let y = G.arBase.y;
+  if (ar.floorY != null && Math.abs(ar.floorY - y) < 1.2) { G.arYsm = G.arYsm == null ? ar.floorY : G.arYsm + (ar.floorY - G.arYsm) * 0.12; y = G.arYsm; }
+  world.position.set(G.arBase.x + G.arOff.x, y, G.arBase.z + G.arOff.z); world.updateMatrixWorld(true);
+  if (ar.anchor && G.state !== 'placing') {
+    world.visible = !ar.lost;
+    if (ar.lost) { $('arMsg').textContent = 'מאבד מעקב. הזז את הטלפון לאט וסרוק את הרצפה'; $('arMsg').classList.remove('hidden'); G.lostShown = true; }
+    else if (G.lostShown) { G.lostShown = false; $('arMsg').classList.add('hidden'); }
+  }
+}
+function startReplant() {
+  if (G.mode !== 'xr' || !ar.session) return;
+  G.replantPrev = G.state; G.state = 'placing'; ar.anchor = null; ar.anchorPos = null; ar.floorSource = null; ar.floorY = null; G.arYsm = null; ar.lost = false;
+  world.visible = false; G.arPlacing = true; ar.placing = true; hide('settings'); G.paused = false;
+  $('arMsg').textContent = 'כוון לרצפה והקש כדי לשתול את העץ מחדש'; $('arMsg').classList.remove('hidden');
 }
 function clampPlayer(p) {
   const r = Math.hypot(p.x, p.z); if (r > ARENA_R - 1.5) { p.x *= (ARENA_R - 1.5) / r; p.z *= (ARENA_R - 1.5) / r; }
@@ -151,22 +193,24 @@ function aimRay() {
 
 // ---------------- combat callbacks used by enemies ----------------
 G.growlAt = e => { const now = performance.now(); if (now - lastGrowl < 350) return; lastGrowl = now; const p = e.group.getWorldPosition(V.a.clone()); sound.growl(p, e.big); };
-G.damagePlayer = (n) => {
+const hitDirs = [];
+G.damagePlayer = (n, e) => {
   if (G.state !== 'wave' && G.state !== 'prep') return;
-  G.player.hp -= n; G.player.lastHit = clock.elapsedTime;
+  killStreak = 0; n *= 0.75; G.player.hp -= n; G.player.lastHit = clock.elapsedTime;
+  if (e && e.group) hitDirs.push({ dx: e.group.position.x - G.pp.x, dz: e.group.position.z - G.pp.z, t: performance.now() });
   vignette(); sound.hurt(); shake = Math.max(shake, 0.25);
   if (navigator.vibrate) navigator.vibrate(35);
-  if (G.player.hp <= 0) endGame(false);
+  if (G.player.hp <= 0) endGame(false, 'player');
 };
 G.damageTree = (n) => {
   if (G.state !== 'wave' && G.state !== 'prep') return;
-  G.tree.hp = Math.max(0, G.tree.hp - n);
+  G.tree.hp = Math.max(0, G.tree.hp - n * (G.mode === 'xr' ? 0.6 : 1));
   sound.treeHit(); shake = Math.max(shake, 0.06);
   if (Math.random() < 0.5) fx.leaves(V.a.set((Math.random() - 0.5) * 8, 5 + Math.random() * 2, (Math.random() - 0.5) * 8), 5);
   if (clock.elapsedTime - lastTreeToast > 7) { lastTreeToast = clock.elapsedTime; toast(t('treeHit'), 1600); }
-  if (G.tree.hp <= 0) endGame(false);
+  if (G.tree.hp <= 0) endGame(false, 'tree');
 };
-function barrVis(b) { b.group.visible = b.hp > 0; b.planks[0].visible = b.hp > 0; b.planks[1].visible = b.hp > 100; b.planks[2].visible = b.hp > 200; }
+function barrVis(b) { b.group.visible = b.hp > 0 && G.mode !== 'xr'; b.planks[0].visible = b.hp > 0; b.planks[1].visible = b.hp > 100; b.planks[2].visible = b.hp > 200; }
 G.damageBarricade = (b, n) => {
   const was = b.hp; b.hp = Math.max(0, b.hp - n); sound.wood();
   fx.dust(V.a.set(b.x, 1, b.z), 4); barrVis(b);
@@ -175,19 +219,26 @@ G.damageBarricade = (b, n) => {
 G.onKill = (e, head) => {
   const d = G.lastHitDist || 0;
   const base = e.def.pts * (head ? 1.5 : 1) * (d > 30 ? 1.25 : 1);
-  addPoints(Math.round(base));
+  addPoints(Math.round(base)); killStreak++; clearTimeout(streakT); streakT = setTimeout(() => { killStreak = 0; }, 3500);
+  popText('+' + Math.round(base) + (head ? ' 🎯' : ''), head ? 'head' : '');
+  if (killStreak >= 3 && killStreak % 2 === 1) setTimeout(() => popText('רצף x' + killStreak + '!', 'big'), 250);
   const p = e.group.position;
   fx.blood(V.a.set(p.x, 1.2 * e.def.scale, p.z), 14);
   sound.die(e.group.getWorldPosition(V.b.clone()), e.big);
   if (navigator.vibrate) navigator.vibrate(12);
   if (e.type === 'boss' || e.type === 'miniboss') { fx.explosion(V.c.set(p.x, 1.5, p.z), 4); }
 };
+let killStreak = 0, streakT = 0;
+function popText(txt, cls) {
+  const d = document.createElement('div'); d.className = 'pop ' + (cls || ''); d.textContent = txt;
+  d.style.left = (50 + (Math.random() - 0.5) * 16) + '%'; $('hud').appendChild(d); setTimeout(() => d.remove(), 1000);
+}
 function addPoints(n) { G.points += n; G.score += n; }
 G.explosionAt = (pos, size, o) => {
   fx.explosion(pos, o.radius || size); const wp = world.localToWorld(pos.clone());
   sound.explosion(wp);
   const camWorld = camera.getWorldPosition(V.b.clone());
-  const dcam = (G.mode === 'xr' ? 1 / AR_SCALE : 1) * camWorld.distanceTo(wp); shake = Math.max(shake, Math.max(0, 0.5 - dcam * 0.02));
+  const dcam = (G.mode === 'xr' ? 1 / arScale() : 1) * camWorld.distanceTo(wp); shake = Math.max(shake, Math.max(0, 0.5 - dcam * 0.02));
   if (o.enemies) {
     for (const e of enemies.list.slice()) {
       if (e.state === 'dying') continue;
@@ -197,7 +248,7 @@ G.explosionAt = (pos, size, o) => {
   }
   const dp = Math.hypot(G.pp.x - pos.x, G.pp.z - pos.z);
   if (o.player && dp < o.radius * 0.85) G.damagePlayer(o.player * (1 - dp / (o.radius * 0.85)));
-  if (o.tree && Math.hypot(pos.x, pos.z) < o.radius + FENCE_R) G.damageTree(o.tree);
+  if (o.tree && Math.hypot(pos.x, pos.z) < o.radius + (G.fenceR || FENCE_R)) G.damageTree(o.tree);
 };
 G.slamAt = (p, e) => {
   sound.slam(world.localToWorld(p.clone()));
@@ -207,37 +258,79 @@ G.slamAt = (p, e) => {
   if (Math.hypot(p.x, p.z) < 11) G.damageTree(e.type === 'boss' ? 90 : 55);
 };
 
+// ---------------- threat indicators (radar + edge arrows + hit direction) ----------------
+const radar = $('radar'), rctx = radar.getContext('2d'), thr = $('threat'), tctx = thr.getContext('2d');
+function drawThreats() {
+  document.body.classList.toggle('prepping', G.state === 'prep');
+  const W = OR.w, H = OR.h; if (thr.width !== W || thr.height !== H) { thr.width = W; thr.height = H; }
+  tctx.clearRect(0, 0, W, H); rctx.clearRect(0, 0, 120, 120);
+  const f = forwardFlat(V.b), fx = f.x, fz = f.z, range = Math.max(10, G.spawnR * 1.25);
+  const rel = (dx, dz) => Math.atan2(-fz * dx + fx * dz, fx * dx + fz * dz);
+  rctx.save(); rctx.translate(60, 60);
+  rctx.strokeStyle = 'rgba(255,255,255,.25)'; rctx.lineWidth = 1; rctx.beginPath(); rctx.arc(0, 0, 56, 0, 6.283); rctx.stroke(); rctx.beginPath(); rctx.arc(0, 0, 28, 0, 6.283); rctx.stroke();
+  rctx.fillStyle = 'rgba(255,255,255,.14)'; rctx.beginPath(); rctx.moveTo(0, 0); rctx.arc(0, 0, 56, -Math.PI / 2 - 0.6, -Math.PI / 2 + 0.6); rctx.fill();
+  const dot = (dx, dz, r, col) => { const a = rel(dx, dz), d = Math.min(1, Math.hypot(dx, dz) / range) * 56; rctx.fillStyle = col; rctx.beginPath(); rctx.arc(Math.sin(a) * d, -Math.cos(a) * d, r, 0, 6.283); rctx.fill(); };
+  dot(-G.pp.x, -G.pp.z, 4, '#4ade80');
+  const Rx = W * 0.45, Ry = H * 0.4;
+  for (const e of enemies.list) {
+    if (e.state === 'dying') continue;
+    const dx = e.group.position.x - G.pp.x, dz = e.group.position.z - G.pp.z, d = Math.hypot(dx, dz), a = rel(dx, dz), big = e.type === 'boss' || e.type === 'miniboss';
+    dot(dx, dz, big ? 4 : 2.6, '#ff4a3a');
+    if (Math.abs(a) > 0.62 && d < range * 0.8) {
+      const vx = Math.sin(a) * Rx, vy = -Math.cos(a) * Ry;
+      tctx.save(); tctx.translate(W / 2 + vx, H / 2 + vy); tctx.rotate(Math.atan2(vy, vx)); tctx.globalAlpha = Math.max(0.35, 1 - d / range);
+      const s = big ? 17 : 12; tctx.fillStyle = '#ff3b2e'; tctx.strokeStyle = '#fff'; tctx.lineWidth = 1.5;
+      tctx.beginPath(); tctx.moveTo(s, 0); tctx.lineTo(-s * 0.7, -s * 0.8); tctx.lineTo(-s * 0.7, s * 0.8); tctx.closePath(); tctx.fill(); tctx.stroke(); tctx.restore();
+    }
+  }
+  rctx.restore();
+  const now = performance.now();
+  for (let i = hitDirs.length - 1; i >= 0; i--) {
+    const h = hitDirs[i], age = (now - h.t) / 1200; if (age >= 1) { hitDirs.splice(i, 1); continue; }
+    const th = rel(h.dx, h.dz) - Math.PI / 2; tctx.strokeStyle = `rgba(255,40,30,${(1 - age) * 0.85})`; tctx.lineWidth = 16; tctx.lineCap = 'round';
+    tctx.beginPath(); tctx.arc(W / 2, H / 2, Math.min(W, H) * 0.36, th - 0.32, th + 0.32); tctx.stroke();
+  }
+}
+
 // ---------------- shooting ----------------
 function fire(w) {
   inv.mag[inv.cur]--; cd = w.rate; flashT = 0.05; kickZ = w.kick; kickRot = w.recoil * 6; camKick += w.recoil;
   shake = Math.max(shake, w.shake * 6);
   sound.shot(w.id); if (navigator.vibrate) navigator.vibrate(w.id === 'shotgun' ? 25 : 8);
   const R = aimRay(), ox = R.o.clone(), dir0 = R.d.clone(), right = R.r.clone(), up = R.u.clone();
-  let anyHit = false, headHit = false;
+  let anyHit = false, headHit = false, headKill = false;
   const bonusSpread = (input.getMove().x || input.getMove().y) ? 1.35 : 1;
   for (let k = 0; k < w.pellets; k++) {
-    const a = Math.random() * Math.PI * 2, rr = Math.sqrt(Math.random()) * w.spread * bonusSpread;
+    const a = Math.random() * Math.PI * 2, rr = Math.sqrt(Math.random()) * w.spread * bonusSpread * (ads ? 0.35 : 1);
     const dir = dir0.clone().addScaledVector(right, Math.cos(a) * rr).addScaledVector(up, Math.sin(a) * rr).normalize();
     const hit = enemies.rayTest(ox, dir, 140);
     if (hit) {
       const d = hit.t; const e = hit.e;
-      const f = d <= w.eff ? 1 : Math.max(w.minFall, 1 - ((d - w.eff) / w.eff) * (1 - w.minFall));
-      let dmg = w.dmg * f * (hit.head ? 2 : 1);
+      // strong up close (x1.4 within 3 m), normal inside effective range, then falling off to ~60% of the weapon's minimum
+      const eR = w.eff * 0.5; // effective range
+      const near = d < 3 ? 1.4 : d < eR * 0.5 ? 1 + 0.4 * (1 - (d - 3) / Math.max(1, eR * 0.5 - 3)) : 1;
+      const far = d <= eR ? 1 : Math.max(w.minFall * 0.6, 1 - ((d - eR) / eR) * (1 - w.minFall * 0.6));
+      const f = near * far;
+      const big = e.type === 'boss' || e.type === 'miniboss';
+      // headshot = instant kill (bosses take x4 instead)
+      let dmg = hit.head ? (big ? w.dmg * f * 4 : e.hp + 1) : w.dmg * f;
       const pts = Math.round(w.pts * (hit.head ? 2 : 1) * (1 + Math.min(0.5, d / 90)) * (w.pellets > 1 ? 1 : 1));
       addPoints(pts);
       G.lastHitDist = d;
       const pt = ox.clone().addScaledVector(dir, d);
       fx.blood(pt, hit.head ? 8 : 5);
       e.knock.addScaledVector(dir, Math.min(2.5, dmg * 0.04));
-      enemies.damage(e, dmg, hit.head);
-      anyHit = true; if (hit.head) headHit = true;
+      const killed = enemies.damage(e, dmg, hit.head);
+      anyHit = true; if (hit.head) { headHit = true; if (killed) headKill = true; }
     } else if (dir.y < -0.01) {
       const tt = -ox.y / dir.y; if (tt > 0 && tt < 120) fx.dust(ox.clone().addScaledVector(dir, tt).setY(0.05), 3);
     }
   }
-  if (anyHit) { hitmark(headHit); sound.hit(headHit); }
+  if (anyHit) { hitmark(headHit); if (headHit) { sound.headshot(); headText(headKill); } else sound.hit(false); }
   if (inv.mag[inv.cur] <= 0 && inv.res[inv.cur] > 0) startReload();
 }
+let hsT = 0;
+function headText(kill) { const el = $('hsTxt'); el.textContent = kill ? 'ירייה בראש! חיסול' : 'ירייה בראש!'; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show'); clearTimeout(hsT); hsT = setTimeout(() => el.classList.remove('show'), 700); }
 function startReload() {
   if (reloading > 0) return; const w = wstat(inv.cur);
   if (inv.mag[inv.cur] >= w.mag || inv.res[inv.cur] <= 0) return;
@@ -246,14 +339,16 @@ function startReload() {
 function switchWeapon() {
   if (inv.owned.length < 2) return;
   const i = (inv.owned.indexOf(inv.cur) + 1) % inv.owned.length; inv.cur = inv.owned[i];
-  reloading = 0; equipT = 0.3; equipModelSoon = 0.15; sound.click();
+  reloading = 0; equipT = 0.45; equipModelSoon = 0.22; ads = false; $('btnAds').classList.remove('on'); sound.swap();
+  popText('⇄ ' + t(inv.cur), 'big'); $('btnSwitch').classList.add('pulse'); setTimeout(() => $('btnSwitch').classList.remove('pulse'), 500);
+  if (navigator.vibrate) navigator.vibrate(15);
 }
 let equipModelSoon = 0;
 function throwGrenade() {
   if (inv.gren <= 0) { sound.deny(); return; }
   inv.gren--; sound.throwG();
   const R = aimRay(); const m = buildGrenadeMesh(); world.add(m);
-  const p = R.o.clone().addScaledVector(R.d, 0.5 * (G.mode === 'xr' ? 1 / AR_SCALE : 1)).addScaledVector(R.u, -0.1 * (G.mode === 'xr' ? 1 / AR_SCALE : 1));
+  const p = R.o.clone().addScaledVector(R.d, 0.5 * (G.mode === 'xr' ? 1 / arScale() : 1)).addScaledVector(R.u, -0.1 * (G.mode === 'xr' ? 1 / arScale() : 1));
   const v = R.d.clone().multiplyScalar(15); v.y += 3.5;
   m.position.copy(p);
   grenades.push({ m, p, v, t: 0, fuse: 2.1 });
@@ -272,6 +367,7 @@ function updateWeapon(dt) {
   if (reloading > 0) { reloading -= dt; if (reloading <= 0) { const need = w.mag - inv.mag[inv.cur], take = Math.min(need, inv.res[inv.cur]); inv.mag[inv.cur] += take; inv.res[inv.cur] -= take; reloading = 0; } }
   if (input.take('reload')) startReload();
   if (input.take('switchW')) switchWeapon();
+  if (input.take('ads')) { ads = !ads; $('btnAds').classList.toggle('on', ads); sound.click(); }
   if (input.take('grenade')) throwGrenade();
   if (equipT > 0) { equipT -= dt; if (equipModelSoon > 0) { equipModelSoon -= dt; if (equipModelSoon <= 0) equipModel(); } }
   const want = input.fire;
@@ -285,16 +381,18 @@ function updateWeapon(dt) {
   // viewmodel animation
   kickZ *= Math.pow(0.0006, dt); kickRot *= Math.pow(0.001, dt);
   const rl = reloading > 0 ? Math.sin(Math.PI * (1 - reloading / reloadDur)) : 0;
-  const eq = equipT > 0 ? Math.sin(Math.PI * (equipT / 0.3)) : 0;
+  const eq = equipT > 0 ? Math.sin(Math.PI * (equipT / 0.45)) : 0;
+  adsK += ((ads ? 1 : 0) - adsK) * Math.min(1, dt * 12);
+  if (G.mode !== 'xr') { const f = baseFov * (1 - 0.38 * adsK); if (Math.abs(camera.fov - f) > 0.05) { camera.fov = f; camera.updateProjectionMatrix(); } }
   const sway = Math.sin(walkT * 2) * 0.006 * (input.getMove().x || input.getMove().y ? 1 : 0.25);
-  gunRoot.position.set(0.15 + sway, -0.19 - rl * 0.16 - eq * 0.25 + Math.abs(Math.sin(walkT)) * 0.004, -0.42 + kickZ);
+  gunRoot.position.set((0.15 + sway) * (1 - adsK), (-0.19 - rl * 0.16 - eq * 0.32 + Math.abs(Math.sin(walkT)) * 0.004) * (1 - adsK) + -0.098 * adsK, (-0.42 + kickZ) * (1 - adsK) + -0.36 * adsK);
   gunRoot.rotation.set(kickRot - rl * 0.5 - eq * 0.5, 0, rl * 0.35);
   if (muzzle) { flashT -= dt; muzzle.visible = flashT > 0; if (muzzle.visible) muzzle.rotation.z = Math.random() * 3; }
 }
 
 // ---------------- player movement / look ----------------
 function updateLook(dt) {
-  const l = input.takeLook(); const sens = 0.0042 * settings.sens;
+  const l = input.takeLook(); const sens = 0.0042 * settings.sens * (1 - 0.5 * adsK);
   if (G.mode === 'xr') return; // pose comes from WebXR
   const useG = settings.gyro && gyro.active;
   if (useG) {
@@ -318,9 +416,7 @@ function updateLook(dt) {
 function updateMove(dt) {
   const m = input.getMove();
   if (G.mode === 'xr') {
-    // real-scale AR: you walk with your body; the stick slides the whole arena the other way
-    const f = forwardFlat(V.b), r = V.c.set(-f.z, 0, f.x), mv = 4.2 * dt;
-    G.arOff.x -= (f.x * m.y + r.x * m.x) * mv; G.arOff.z -= (f.z * m.y + r.z * m.x) * mv;
+    // AR: position comes ONLY from the XR camera pose (you walk with your body); the world stays anchored in place
     placeWorldAR();
     camera.getWorldPosition(V.a); world.worldToLocal(V.a);
     G.pp.x = V.a.x; G.pp.z = V.a.z; G.eyeY = V.a.y; return;
@@ -335,8 +431,8 @@ function updateMove(dt) {
 
 // ---------------- waves ----------------
 function buildQueue(w) {
-  const q = []; const n = Math.round(8 + w * 4.2);
-  const wt = { normal: 1, fast: w >= 2 ? 0.25 + 0.03 * w : 0, heavy: w >= 3 ? 0.1 + 0.025 * w : 0, bomber: w >= 4 ? 0.1 + 0.02 * w : 0 };
+  const q = []; const n = [4, 6, 8, 11, 14, 17, 21, 26, 31, 36][Math.min(9, w - 1)];
+  const wt = { normal: 1, fast: w >= 3 ? 0.15 + 0.03 * w : 0, heavy: w >= 5 ? 0.1 + 0.025 * w : 0, bomber: w >= 6 ? 0.1 + 0.02 * w : 0 };
   const tot = Object.values(wt).reduce((a, b) => a + b, 0);
   for (let i = 0; i < n; i++) { let r = Math.random() * tot, pick = 'normal'; for (const k in wt) { if ((r -= wt[k]) <= 0) { pick = k; break; } } q.push(pick); }
   if (w === 5) q.splice(Math.min(q.length, 8), 0, 'miniboss');
@@ -344,7 +440,7 @@ function buildQueue(w) {
   return q;
 }
 function startWave() {
-  G.wave++; G.state = 'wave'; queue = buildQueue(G.wave); spawnT = 1.5;
+  G.wave++; G.state = 'wave'; queue = buildQueue(G.wave); spawnT = G.mode === 'xr' ? 7 : 1.5;
   G.activeGates = []; const n = Math.min(GATES, 2 + Math.floor(G.wave / 2));
   const all = [0, 1, 2, 3, 4, 5].sort(() => Math.random() - 0.5); G.activeGates = all.slice(0, n);
   for (const c of G.crates) c.uses = 3;
@@ -368,10 +464,10 @@ function updateWaves(dt) {
   if (G.state === 'prep') { prepT -= dt; $('count').textContent = Math.max(0, Math.ceil(prepT)); if (prepT <= 0) startWave(); return; }
   if (G.state !== 'wave') return;
   spawnT -= dt;
-  if (queue.length && spawnT <= 0 && enemies.aliveCount() < (G.maxAlive || 22)) { spawnOne(); spawnT = G.fast ? 0.02 : Math.max(0.45, 1.5 - G.wave * 0.1) * (0.7 + Math.random() * 0.6); }
+  if (queue.length && spawnT <= 0 && enemies.aliveCount() < Math.min(G.maxAlive || 22, 2 + Math.floor(G.wave * 1.6))) { spawnOne(); spawnT = G.fast ? 0.02 : Math.max(0.6, 3.2 - G.wave * 0.25) * (0.8 + Math.random() * 0.4); }
   if (!queue.length && enemies.aliveCount() === 0) {
     if (G.wave >= TOTAL_WAVES) { endGame(true); return; }
-    addPoints(100 * G.wave); banner(`✔ ${t('wave')} ${G.wave}`); sound.buy();
+    { const bonus = 100 * G.wave; addPoints(bonus); banner(`🎉 ${t('wave')} ${G.wave} נוקה!`); sound.buy(); setTimeout(() => popText(`בונוס גל +${bonus}`, 'big'), 600); }
     G.state = 'prep-wait'; setTimeout(() => { if (G.state === 'prep-wait') startPrep(false); }, 2200);
   }
 }
@@ -390,7 +486,7 @@ function renderShop() {
     if (id === 'pistol') continue;
     const owned = inv.owned.includes(id), W = WEAPONS[id];
     if (owned) { const d = document.createElement('div'); d.className = 'item'; d.innerHTML = `<div><b>${t(id)}</b></div><div class="tiny">${t('owned')}</div>`; box.appendChild(d); }
-    else row(t(id), `${W.dmg}${W.pellets > 1 ? '×' + W.pellets : ''} dmg`, W.price, G.points >= W.price, () => { inv.owned.push(id); inv.mag[id] = wstat(id).mag; inv.res[id] = maxRes(id); inv.cur = id; equipModel(); }, `${t('buy')} ${W.price}`);
+    else row(t(id), `${W.dmg}${W.pellets > 1 ? '×' + W.pellets : ''} dmg`, W.price, G.points >= W.price, () => { if (inv.owned.length >= 2) inv.owned.splice(1, 1, id); else inv.owned.push(id); inv.mag[id] = wstat(id).mag; inv.res[id] = maxRes(id); inv.cur = id; reloading = 0; equipModel(); }, `${t('buy')} ${W.price}` + (inv.owned.length >= 2 ? ` (מחליף ${t(inv.owned[1])})` : ''));
   }
   const L = inv.lvl[inv.cur] || 0, upPrice = 400 * (L + 1);
   if (L >= 3) { const d = document.createElement('div'); d.className = 'item'; d.innerHTML = `<div><b>${t(inv.cur)}</b></div><div class="tiny">${t('maxed')}</div>`; box.appendChild(d); }
@@ -433,6 +529,8 @@ function updateHUD() {
   $('ptsTxt').textContent = `${t('points')} ${G.points}`; $('scoreTxt').textContent = `${t('score')} ${G.score}`;
   $('pBar').firstElementChild.style.width = Math.max(0, G.player.hp / G.player.max * 100) + '%';
   const id = inv.cur;
+  $('wSlots').innerHTML = inv.owned.map(o => `<span class="${o === id ? 'on' : ''}">${t(o)}</span>`).join(' ⇄ ');
+  { const nx = inv.owned.find(o => o !== id); $('swCur').textContent = t(id); $('swNext').textContent = nx ? '⇄ ' + t(nx) : ''; }
   $('wName').textContent = t(id) + (inv.lvl[id] ? ' ★'.repeat(inv.lvl[id]) : '');
   $('mag').textContent = reloading > 0 ? '…' : inv.mag[id]; $('res').textContent = inv.res[id];
   $('gCount').textContent = `● ×${inv.gren}`;
@@ -441,11 +539,11 @@ function updateHUD() {
 
 // ---------------- game flow ----------------
 function resetGame() {
-  enemies.clear(); queue = []; for (const g of grenades) world.remove(g.m); grenades = [];
+  ads = false; adsK = 0; $('btnAds').classList.remove('on'); enemies.clear(); queue = []; for (const g of grenades) world.remove(g.m); grenades = [];
   G.wave = 0; G.points = 500; G.score = 0; G.tree.hp = G.tree.max; G.player.hp = G.player.max;
   for (const b of G.barricades) { b.hp = b.max; barrVis(b); } for (const c of G.crates) c.uses = 3;
   resetInv(); equipModel(); reloading = 0; cd = 0; gyroCal = false; shake = 0; camKick = 0;
-  const a = Math.random() * Math.PI * 2; G.pp.x = Math.cos(a) * 9; G.pp.z = Math.sin(a) * 9;
+  const a = Math.random() * Math.PI * 2; G.pp.x = Math.cos(a) * 18; G.pp.z = Math.sin(a) * 18;
   yaw = Math.atan2(G.pp.x, G.pp.z); pitch = -0.05; input.reset();
 }
 function beginPlay() {
@@ -456,19 +554,57 @@ function beginPlay() {
 }
 function startPrepFirst() { if (G.state === 'intro') startPrep(true); }
 
+function startCalib() {
+  G.state = 'calib'; ar.measuring = false; $('arMsg').classList.add('hidden');
+  const sl = $('calH'); sl.value = G.arH; $('calV').textContent = G.arH.toFixed(2) + ' מ׳'; show('calib');
+  sl.oninput = () => { G.arH = +sl.value; $('calV').textContent = G.arH.toFixed(2) + ' מ׳'; applyArScale(); };
+  $('btnCalGo').onclick = () => {
+    hide('calib'); settings.arH = G.arH; saveSettings(); $('setArSize').value = G.arH;
+    G.pp.x = 0; G.pp.z = 0; beginPlay();
+  };
+}
+// AR: plant the tree on the floor, then set its height manually in the calibration panel
+function startPlacing() {
+  G.state = 'placing'; ar.measuring = false; ar.placing = true; show('hud'); input.enabled = false;
+  $('arMsg').textContent = 'כוון לרצפה והקש כדי לשתול את העץ'; $('arMsg').classList.remove('hidden');
+}
+function briefing(mode) {
+  return new Promise(res => {
+    $('brAR').classList.toggle('hidden', mode !== 'xr');
+    $('brSens').value = settings.sens; $('brVol').value = settings.vol;
+    $('brSens').oninput = e => { settings.sens = +e.target.value; saveSettings(); $('setSens').value = settings.sens; };
+    $('brVol').oninput = e => { settings.vol = +e.target.value; saveSettings(); $('setVol').value = settings.vol; sound.setVolume(settings.vol); };
+    show('brief'); $('btnBriefGo').onclick = () => { hide('brief'); res(); };
+  });
+}
+function pickLoadout() {
+  return new Promise(res => {
+    const grid = $('lgrid'); grid.innerHTML = '';
+    for (const id of ['mp5', 'm4', 'ak', 'shotgun']) {
+      const W = WEAPONS[id], b = document.createElement('button'); b.className = 'lw';
+      b.innerHTML = `<b>${t(id)}</b><span dir="ltr">${W.dmg}${W.pellets > 1 ? '×' + W.pellets : ''} dmg · ${W.mag}</span>`;
+      b.onclick = () => { hide('loadout'); res(id); }; grid.appendChild(b);
+    }
+    show('loadout');
+  });
+}
+// try to force landscape (needs fullscreen on Android Chrome); the virtual rotation in orient.js is the fallback
+async function tryLock() { try { const el = document.documentElement; if (el.requestFullscreen && !document.fullscreenElement) await el.requestFullscreen(); if (screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape'); } catch (e) {} }
 async function startGame(mode) {
   sound.init(); sound.setVolume(settings.vol); sound.startMusic(); sound.intensity = 0.1; sound.ui();
   hide('menu'); hide('end'); resetGame();
+  await briefing(mode);
+  { const w = await pickLoadout(); inv.owned.push(w); inv.mag[w] = wstat(w).mag; inv.res[w] = maxRes(w); }
   if (mode !== 'xr' && settings.gyro) { const ok = await gyro.request(); if (!ok) toast(t('gyroDenied')); }
   if (mode === 'xr') {
     try {
       applyModeVisuals('xr'); world.visible = false; G.arPlacing = true; G.state = 'placing';
       await ar.startXR(pos => {
-        G.arBase.copy(pos); G.arOff.x = G.arOff.z = 0; placeWorldAR(); world.visible = true; G.arPlacing = false;
-        // start with the player on the arena's edge facing the tree
-        G.pp.x = 0; G.pp.z = 0; beginPlay();
+        G.arBase.copy(pos); G.arOff.x = G.arOff.z = 0; G.arYsm = null; placeWorldAR(); world.visible = true; G.arPlacing = false;
+        if (G.replantPrev) { G.state = G.replantPrev; G.replantPrev = null; $('arMsg').classList.add('hidden'); toast('העץ נשתל מחדש'); return; }
+        startCalib();
       }, () => { applyModeVisuals('normal'); world.visible = true; G.arPlacing = false; if (G.state !== 'menu' && G.state !== 'ended') toMenu(); });
-      show('hud'); input.enabled = false; $('arMsg').textContent = t('arScan'); $('arMsg').classList.remove('hidden');
+      startPlacing();
       return;
     } catch (e) { console.warn('XR failed, using camera fallback', e); world.visible = true; G.arPlacing = false; mode = 'cam'; }
   }
@@ -479,12 +615,12 @@ async function startGame(mode) {
   applyModeVisuals(mode); beginPlay();
 }
 
-function endGame(win) {
+function endGame(win, cause) {
   if (G.state === 'ended') return;
   G.state = 'ended'; input.enabled = false; input.reset(); hide('hud'); hide('shop'); hideStory();
   sound.intensity = 0.05; win ? sound.win() : sound.lose();
   if (G.score > settings.hi) { settings.hi = G.score; saveSettings(); }
-  $('endTitle').textContent = win ? t('victory') : t('defeat'); $('endLine').textContent = win ? t('winLine') : t('loseLine');
+  $('endTitle').textContent = win ? t('victory') : t('defeat'); $('endLine').textContent = win ? t('winLine') : (cause === 'player' ? 'נפלת בקרב: הזומבים הגיעו אליך. העץ עדיין עומד.' : t('loseLine'));
   $('endScore').textContent = G.score; $('endHi').textContent = settings.hi; show('end');
   if (ar.session) ar.endXR();
 }
@@ -502,14 +638,14 @@ function frame(_, xrFrame) {
   if (G.state === 'menu' || G.state === 'ended') {
     menuA += dt * 0.12; camera.position.set(Math.cos(menuA) * 15, 4.3, Math.sin(menuA) * 15); camera.lookAt(0, 4.6, 0); if (gunRoot.visible) gunRoot.visible = false;
     fx.update(dt); enemies.update(dt * 0);
-  } else if (G.state === 'placing') {
+  } else if (G.state === 'placing' || G.state === 'calib') {
     // waiting for AR placement
   } else if (!G.paused) {
     gunRoot.visible = true;
     if (G.state !== 'prep-wait' || true) {
       updateLook(dt); updateMove(dt);
       if (G.mode === 'xr') { camera.updateMatrixWorld(true); }
-      updateWeapon(dt); updateGrenades(dt); enemies.update(dt); updateWaves(dt); fx.update(dt); updateCrates();
+      updateWeapon(dt); updateGrenades(dt); enemies.update(dt); updateWaves(dt); fx.update(dt); updateCrates(); drawThreats();
       if (G.player.hp < G.player.max && clock.elapsedTime - G.player.lastHit > 5) G.player.hp = Math.min(G.player.max, G.player.hp + 8 * dt);
       sound.updateListener(camera);
       hudT -= dt; if (hudT <= 0) { hudT = 0.1; updateHUD(); }
@@ -527,15 +663,17 @@ function setupUI() {
   $('setLang').onchange = e => { settings.lang = e.target.value; saveSettings(); applyLang(); if (G.state === 'prep') renderShop(); };
   $('setQual').onchange = e => { settings.quality = e.target.value; saveSettings(); applyQuality(settings.quality === 'auto' ? 'med' : settings.quality); };
   $('setGyro').onchange = e => { settings.gyro = e.target.checked; saveSettings(); };
+  $('setArSize').value = settings.arH || 2.0; $('setArSize').oninput = e => { settings.arH = +e.target.value; saveSettings(); if (G.mode === 'xr') { G.arH = settings.arH; applyArScale(); } };
   $('setSens').oninput = e => { settings.sens = +e.target.value; saveSettings(); };
   $('setVol').oninput = e => { settings.vol = +e.target.value; sound.setVolume(settings.vol); saveSettings(); };
-  const openSet = () => { show('settings'); if (G.state === 'prep' || G.state === 'wave') G.paused = true; };
+  const openSet = () => { $('btnReplant').classList.toggle('hidden', G.mode !== 'xr'); show('settings'); if (G.state === 'prep' || G.state === 'wave') G.paused = true; };
   $('btnMenuSettings').onclick = () => { sound.init(); sound.ui(); openSet(); };
   $('btnSettings').onclick = openSet;
+  $('btnReplant').onclick = startReplant;
   $('btnSetClose').onclick = () => { hide('settings'); G.paused = false; clock.getDelta(); };
   $('btnRotOk').onclick = () => { rotDismissed = true; $('rotate').classList.remove('on'); };
-  $('btnPlay').onclick = () => startGame('normal');
-  $('btnPlayAR').onclick = async () => { const x = await ar.xrSupported(); startGame(x ? 'xr' : 'cam'); };
+  $('btnPlay').onclick = () => { tryLock(); startGame('normal'); };
+  $('btnPlayAR').onclick = async () => { const x = await ar.xrSupported(); if (!x) tryLock(); startGame(x ? 'xr' : 'cam'); };
   $('btnShopT').onclick = () => { if (G.state === 'prep') { $('shop').classList.toggle('hidden'); sound.ui(); } };
   $('btnStart').onclick = () => { if (G.state === 'prep') { sound.ui(); startWave(); } };
   $('btnAgain').onclick = () => { hide('end'); startGame(G.mode === 'xr' ? 'cam' : G.mode); };
@@ -551,4 +689,4 @@ barrVisAll();
 function barrVisAll() { for (const b of G.barricades) barrVis(b); }
 resize();
 renderer.setAnimationLoop(frame);
-G.api = { lookAt: (x, y, z) => { const dx = x - G.pp.x, dz = z - G.pp.z; yaw = Math.atan2(-dx, -dz); pitch = Math.atan2(y - EYE, Math.hypot(dx, dz)); }, startGame, startWave, endGame, startPrep, toMenu, inv, input, gyro, ar, queue: () => queue, setPaused: v => (G.paused = v) };
+G.api = { gunInfo: () => ({ cur: inv.cur, mesh: gunMesh && gunMesh.children[0] ? gunMesh.children[0].uuid : null, ads, adsK, fov: camera.fov }), measure: () => { world.updateMatrixWorld(true); const h = o => { const b = new THREE.Box3().setFromObject(o); return b.max.y - b.min.y; }; const z = enemies.list[0]; return { tree: h(G.tree.mesh.group), zombie: z ? h(z.model || z.group) : null, arH: G.arH }; }, startCalib, startPlacing, pickLoadout, camera, applyMode: applyModeVisuals, lookAt: (x, y, z) => { const dx = x - G.pp.x, dz = z - G.pp.z; yaw = Math.atan2(-dx, -dz); pitch = Math.atan2(y - EYE, Math.hypot(dx, dz)); }, startGame, startWave, endGame, startPrep, toMenu, inv, input, gyro, ar, queue: () => queue, setPaused: v => (G.paused = v) };

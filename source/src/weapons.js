@@ -2,11 +2,11 @@ import * as THREE from 'three';
 
 // dmg: per bullet; pellets: bullets per shot; eff: effective range (m); minFall: damage factor at 2x eff
 export const WEAPONS = {
-  pistol: { id: 'pistol', dmg: 30, rate: 0.28, mag: 12, reload: 1.1, spread: 0.006, eff: 45, minFall: 0.5, auto: false, pellets: 1, pts: 10, price: 0, kick: 0.05, recoil: 0.012, shake: 0.004, reserveMul: 6, mat: 0x2b2d30 },
-  mp5: { id: 'mp5', dmg: 17, rate: 0.075, mag: 30, reload: 1.7, spread: 0.026, eff: 28, minFall: 0.35, auto: true, pellets: 1, pts: 8, price: 700, kick: 0.035, recoil: 0.006, shake: 0.0025, reserveMul: 5, mat: 0x25282b },
-  m4: { id: 'm4', dmg: 27, rate: 0.1, mag: 30, reload: 2.0, spread: 0.012, eff: 55, minFall: 0.55, auto: true, pellets: 1, pts: 10, price: 1300, kick: 0.045, recoil: 0.008, shake: 0.003, reserveMul: 5, mat: 0x30332e },
+  pistol: { id: 'pistol', dmg: 18, rate: 0.24, mag: 12, reload: 1.1, spread: 0.006, eff: 45, minFall: 0.5, auto: false, pellets: 1, pts: 10, price: 0, kick: 0.05, recoil: 0.012, shake: 0.004, reserveMul: 6, mat: 0x2b2d30 },
+  mp5: { id: 'mp5', dmg: 20, rate: 0.075, mag: 30, reload: 1.7, spread: 0.026, eff: 28, minFall: 0.35, auto: true, pellets: 1, pts: 8, price: 700, kick: 0.035, recoil: 0.006, shake: 0.0025, reserveMul: 5, mat: 0x25282b },
+  m4: { id: 'm4', dmg: 28, rate: 0.1, mag: 30, reload: 2.0, spread: 0.012, eff: 55, minFall: 0.55, auto: true, pellets: 1, pts: 10, price: 1300, kick: 0.045, recoil: 0.008, shake: 0.003, reserveMul: 5, mat: 0x30332e },
   ak: { id: 'ak', dmg: 38, rate: 0.12, mag: 30, reload: 2.3, spread: 0.02, eff: 50, minFall: 0.5, auto: true, pellets: 1, pts: 12, price: 1600, kick: 0.06, recoil: 0.014, shake: 0.0045, reserveMul: 4, mat: 0x3b2f22 },
-  shotgun: { id: 'shotgun', dmg: 15, rate: 0.85, mag: 6, reload: 2.4, spread: 0.075, eff: 14, minFall: 0.1, auto: false, pellets: 8, pts: 4, price: 950, kick: 0.12, recoil: 0.04, shake: 0.012, reserveMul: 5, mat: 0x2a2018 }
+  shotgun: { id: 'shotgun', dmg: 16, rate: 0.85, mag: 6, reload: 2.4, spread: 0.075, eff: 14, minFall: 0.1, auto: false, pellets: 8, pts: 4, price: 950, kick: 0.12, recoil: 0.04, shake: 0.012, reserveMul: 5, mat: 0x2a2018 }
 };
 export const WEAPON_ORDER = ['pistol', 'mp5', 'm4', 'ak', 'shotgun'];
 
