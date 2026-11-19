@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { A, findBone } from './assets.js';
 import { ARENA_R, BARR_R, FENCE_R, GATES, gateAngle } from './world.js';
 
 export const TYPES = {
@@ -69,6 +71,45 @@ function buildZombie(type, masked) {
   return { g, body, legL, legR, armL, armR, head };
 }
 
+
+// ---- optional realistic skinned zombie (from assets/models/manifest.json) ----
+const TINT = { normal: [1, 1, 1], fast: [0.95, 1, 0.9], heavy: [0.85, 0.9, 0.8], bomber: [1, 0.95, 0.9], miniboss: [0.75, 0.8, 0.75], boss: [0.65, 0.7, 0.7] };
+const accMat = { band: new THREE.MeshStandardMaterial({ color: 0x22d63a, emissive: 0x0f6a1a, roughness: 0.7 }), mask: new THREE.MeshStandardMaterial({ color: 0x1b1d1a, roughness: 1 }), vest: new THREE.MeshStandardMaterial({ color: 0x8a2a1c, emissive: 0x3a0c06 }), pack: new THREE.MeshStandardMaterial({ color: 0xd9a21b, emissive: 0x4a3400 }) };
+function buildSkinned(type, masked) {
+  const def = TYPES[type]; const src = A.zombies[Math.floor(Math.random() * A.zombies.length)];
+  if (!src.norm) {
+    src.obj.updateMatrixWorld(true);
+    const b = new THREE.Box3().setFromObject(src.obj); const h = b.max.y - b.min.y || 1;
+    src.norm = (src.cfg.height || 1.8) / h; src.dy = -b.min.y * src.norm;
+  }
+  const g = new THREE.Group(); const model = SkeletonUtils.clone(src.obj);
+  model.scale.multiplyScalar(src.norm); model.position.y = src.dy; g.add(model);
+  const t = TINT[type], tint = new THREE.Color(src.cfg.tint !== undefined ? src.cfg.tint : 0xdfeccf).multiply(new THREE.Color().setRGB(t[0], t[1], t[2]));
+  model.traverse(o => {
+    if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; const m = Array.isArray(o.material) ? o.material.map(x => x.clone()) : o.material.clone(); (Array.isArray(m) ? m : [m]).forEach(x => { if (x.color) x.color.multiply(tint); }); o.material = m; }
+  });
+  g.scale.setScalar(def.scale); g.updateMatrixWorld(true);
+  const head = findBone(model, /head$/i) || findBone(model, /head/i);
+  if (head) {
+    const ws = new THREE.Vector3(); head.getWorldScale(ws); const k = 1 / (ws.x || 1) * def.scale; // unit = metres
+    const band = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.017, 8, 18), accMat.band); band.rotation.x = Math.PI / 2; band.position.set(0, 0.12 * k, 0.015 * k); band.scale.setScalar(k); band.castShadow = true; head.add(band);
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.2, 0.012), accMat.band); tail.position.set(0.03 * k, 0.04 * k, -0.11 * k); tail.scale.setScalar(k); head.add(tail);
+    if (masked) { const mask = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.095, 0.1, 14, 1, true), accMat.mask); mask.material.side = THREE.DoubleSide; mask.position.set(0, 0.03 * k, 0.025 * k); mask.scale.setScalar(k); head.add(mask); }
+  }
+  if (type === 'bomber') {
+    const spine = findBone(model, /spine2$/i) || findBone(model, /spine/i);
+    if (spine) { const ws = new THREE.Vector3(); spine.getWorldScale(ws); const k = 1 / (ws.x || 1) * def.scale; const vest = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.3, 0.26), accMat.vest); vest.scale.setScalar(k); vest.position.set(0, 0.06 * k, 0.02 * k); spine.add(vest); for (let i = -1; i <= 1; i++) { const pk = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.14, 0.07), accMat.pack); pk.scale.setScalar(k); pk.position.set(i * 0.12 * k, 0.04 * k, 0.15 * k); spine.add(pk); } }
+  }
+  const mixer = new THREE.AnimationMixer(model); const acts = {};
+  const mk = (k, loop = true) => { const c = A.clips[k]; if (!c) return null; const a = mixer.clipAction(c); if (!loop) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; } return a; };
+  acts.walk = mk('walk') || mk('run') || mk('idle'); acts.run = mk('run') || acts.walk; acts.idle = mk('idle') || acts.walk; acts.attack = mk('attack') || acts.idle; acts.death = mk('death', false);
+  return { g, mixer, acts, skinned: true, model };
+}
+function playAct(e, name) {
+  if (!e.mixer || e.act === name) return; const a = e.acts[name]; if (!a) return;
+  const prev = e.acts[e.act]; a.reset().setEffectiveWeight(1).fadeIn(0.2).play(); if (prev && prev !== a) prev.fadeOut(0.2); e.act = name;
+}
+
 export class Enemies {
   constructor(G) { this.G = G; this.list = []; }
 
@@ -78,17 +119,19 @@ export class Enemies {
   spawn(type, x, z, wave) {
     const def = TYPES[type];
     const masked = Math.random() < (type === 'normal' ? 0.35 : type === 'fast' ? 0.5 : 0.3);
-    const z0 = buildZombie(type, masked);
+    const z0 = A.zombies.length ? buildSkinned(type, masked) : buildZombie(type, masked);
     const hpMul = 1 + 0.12 * (wave - 1);
     const e = {
       type, def, group: z0.g, parts: z0, masked,
       hp: def.hp * hpMul, max: def.hp * hpMul,
       speed: def.speed * (0.92 + Math.random() * 0.2) * (1 + 0.015 * wave), dmg: def.dmg * (1 + 0.05 * (wave - 1)),
       state: 'walk', t: Math.random() * 6, atk: 0, flash: 0, slam: 5 + Math.random() * 2, summon: 12, dead: 0,
+      mixer: z0.mixer || null, acts: z0.acts || null, act: null, deathLen: 0,
       big: type === 'heavy' || type === 'boss' || type === 'miniboss', growl: 2 + Math.random() * 6, knock: new THREE.Vector3()
     };
     e.group.position.set(x, 0, z);
     this.G.world.add(e.group);
+    if (e.mixer) { playAct(e, type === 'fast' ? 'run' : 'walk'); e.mixer.update(Math.random() * 2); }
     this.list.push(e);
     return e;
   }
@@ -125,6 +168,7 @@ export class Enemies {
 
   kill(e, head) {
     e.state = 'dying'; e.dead = 0;
+    if (e.mixer && e.acts.death) { if (e.acts.walk) e.acts.walk.fadeOut(0.1); if (e.acts.attack) e.acts.attack.fadeOut(0.1); e.acts.death.reset().play(); e.deathLen = e.acts.death.getClip().duration; }
     this.G.onKill(e, head);
   }
 
@@ -134,9 +178,11 @@ export class Enemies {
       const e = list[i], g = e.group, p = g.position, P = e.parts;
       if (e.state === 'dying') {
         e.dead += dt;
-        g.rotation.x = -Math.min(1.5, e.dead * 3.2);
-        if (e.dead > 1.4) p.y -= dt * 0.5;
-        if (e.dead > 2.8) { G.world.remove(g); list.splice(i, 1); }
+        if (e.mixer) e.mixer.update(dt);
+        if (!(e.mixer && e.deathLen)) g.rotation.x = -Math.min(1.5, e.dead * 3.2);
+        const life = e.deathLen ? e.deathLen + 1.5 : 2.8;
+        if (e.dead > life - 1.3) p.y -= dt * 0.5;
+        if (e.dead > life) { G.world.remove(g); list.splice(i, 1); }
         continue;
       }
       e.t += dt; e.atk -= dt; e.flash = Math.max(0, e.flash - dt);
@@ -212,12 +258,18 @@ export class Enemies {
       g.rotation.y += dy * Math.min(1, dt * 8);
 
       // --- animation ---
+      if (e.mixer) {
+        const attacking = e.atk > 0.55 && speedK <= 0.1;
+        playAct(e, attacking ? 'attack' : (speedK < 0.1 ? 'idle' : (e.type === 'fast' ? 'run' : 'walk')));
+        e.mixer.update(dt * (speedK > 0.1 ? Math.max(0.6, e.speed / 2.0) : 1));
+      } else {
       const w = e.t * (2.2 + e.speed * 1.6) * (speedK > 0.1 ? 1 : 0.3);
       P.legL.rotation.x = Math.sin(w) * 0.8; P.legR.rotation.x = -Math.sin(w) * 0.8;
       P.armL.rotation.x = -1.3 + Math.sin(w * 0.5) * 0.15; P.armR.rotation.x = -1.2 - Math.sin(w * 0.5) * 0.15;
       if (e.atk > 0.55 && speedK <= 0.1) { P.armL.rotation.x = -2.0; P.armR.rotation.x = -2.0; }
       P.body.rotation.z = Math.sin(w * 0.5) * 0.06; P.body.position.y = Math.abs(Math.sin(w)) * 0.05;
       P.head.rotation.z = Math.sin(e.t * 1.3) * 0.12;
+      }
       const sc = e.def.scale * (1 + e.flash * 0.35);
       g.scale.setScalar(sc);
     }

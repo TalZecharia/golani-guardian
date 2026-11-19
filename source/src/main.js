@@ -6,6 +6,7 @@ import { Enemies, TYPES } from './enemies.js';
 import { buildWorld, placeBarricades, GATES, gateAngle, ARENA_R, BARR_R, FENCE_R } from './world.js';
 import { WEAPONS, WEAPON_ORDER, buildGun, buildGrenadeMesh } from './weapons.js';
 import { AR, AR_SCALE } from './ar.js';
+import { loadAssets, A } from './assets.js';
 import { $, t, settings, saveSettings, applyLang, toast, banner, story, hideStory, show, hide, hitmark, vignette } from './ui.js';
 
 const TOTAL_WAVES = 10;
@@ -55,9 +56,22 @@ const gunLight = new THREE.PointLight(0xfff0d0, 2.2, 3, 1.5); gunLight.position.
 gunRoot.position.set(0.15, -0.19, -0.42);
 let gunMesh = null, muzzle = null;
 const flashMat = new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+const GUN_LEN = { pistol: 0.22, mp5: 0.5, m4: 0.85, ak: 0.88, shotgun: 1.0 };
+function customGun(id) {
+  const aw = A.weapons[id]; if (!aw) return null;
+  const g = new THREE.Group(), o = aw.obj.clone(true), c = aw.cfg;
+  o.rotation.set(...(c.rot || [0, 0, 0]).map(d => d * Math.PI / 180)); g.add(o); g.updateMatrixWorld(true);
+  let box = new THREE.Box3().setFromObject(g); const len = box.max.z - box.min.z || 1;
+  o.scale.multiplyScalar((c.length || GUN_LEN[id]) / len); g.updateMatrixWorld(true); box.setFromObject(g);
+  const pos = c.pos || [0, 0, 0];
+  o.position.set(-(box.min.x + box.max.x) / 2 + pos[0], -box.max.y + 0.05 + pos[1], -box.max.z + 0.12 + pos[2]);
+  g.userData.muzzleZ = (box.min.z - box.max.z) + 0.12 + (c.muzzleOffset || 0);
+  o.traverse(m => { if (m.isMesh) { m.castShadow = false; m.frustumCulled = false; } });
+  return g;
+}
 function equipModel() {
   if (gunMesh) gunRoot.remove(gunMesh);
-  gunMesh = buildGun(inv.cur);
+  gunMesh = customGun(inv.cur) || buildGun(inv.cur);
   muzzle = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.2), flashMat);
   muzzle.position.set(0, 0.0, gunMesh.userData.muzzleZ - 0.05); muzzle.visible = false;
   const m2 = muzzle.clone(); m2.rotation.y = Math.PI / 2; muzzle.add(m2);
@@ -532,6 +546,7 @@ function setupUI() {
 }
 setupUI();
 applyQuality(settings.quality === 'auto' ? 'med' : settings.quality);
+loadAssets().then(() => { if (A.weapons[inv.cur]) equipModel(); }).catch(() => {});
 barrVisAll();
 function barrVisAll() { for (const b of G.barricades) barrVis(b); }
 resize();
