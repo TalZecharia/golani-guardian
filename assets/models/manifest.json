@@ -1,9 +1,66 @@
 {
-  "zombies": [ { "file": "zombies/zombie_character.fbx", "height": 1.85, "tint": 15794144 } ],
-  "anims": { "walk": "zombies/zombie_walk.fbx", "run": "zombies/zombie_run.fbx", "attack": "zombies/zombie_attack.fbx", "death": "zombies/zombie_death.fbx" },
-  "weapons": {
-    "m4": { "file": "m4.glb", "rot": [0, 90, 0], "length": 0.85 },
-    "mp5": { "file": "mp5.glb", "rot": [0, 0, 0], "length": 0.55 },
-    "shotgun": { "file": "shotgun.glb", "rot": [0, 180, 0], "length": 1.0 }
+ "zombies": [
+  {
+   "file": "zombies/zombie_character.fbx",
+   "height": 1.85,
+   "tint": 15794144
   }
+ ],
+ "anims": {
+  "walk": "zombies/zombie_walk.fbx",
+  "run": "zombies/zombie_run.fbx",
+  "attack": "zombies/zombie_attack.fbx",
+  "death": "zombies/zombie_death.fbx"
+ },
+ "weapons": {
+  "m4": {
+   "file": "m4.glb",
+   "rot": [
+    0,
+    90,
+    0
+   ],
+   "length": 0.85
+  },
+  "mp5": {
+   "file": "mp5.glb",
+   "rot": [
+    0,
+    0,
+    0
+   ],
+   "length": 0.55
+  },
+  "shotgun": {
+   "file": "shotgun.glb",
+   "rot": [
+    0,
+    180,
+    0
+   ],
+   "length": 1.0
+  },
+  "pistol": {
+   "file": "pistol.glb",
+   "rot": [
+    0,
+    90,
+    0
+   ],
+   "length": 0.24,
+   "hands": [
+    0.3,
+    0.36
+   ]
+  },
+  "ak": {
+   "file": "ak.glb",
+   "rot": [
+    0,
+    -90,
+    0
+   ],
+   "length": 0.88
+  }
+ }
 }
