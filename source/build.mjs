@@ -9,3 +9,4 @@ const tpl = fs.readFileSync('template.html', 'utf8');
 fs.mkdirSync('dist', { recursive: true });
 fs.writeFileSync('dist/index.html', tpl.replace('/*__JS__*/', () => js));
 console.log('built dist/index.html', (fs.statSync('dist/index.html').size / 1024).toFixed(0) + ' KB');
+fs.cpSync('assets', 'dist/assets', { recursive: true });

@@ -159,7 +159,7 @@ export class Enemies {
 
       // --- barricade blocking ---
       let blocked = null;
-      if (r > BARR_R - 0.3 && r < BARR_R + 3.5) {
+      if (r > G.barrR - 0.3 && r < G.barrR + 3.5) {
         for (const b of G.barricades) {
           if (b.hp <= 0) continue;
           if (Math.hypot(p.x - b.x, p.z - b.z) < 3.0) { blocked = b; break; }

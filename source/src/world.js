@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { makeTree } from './tree.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 
 export const GATES = 6;
 export const gateAngle = i => ((i * 60 + 30) * Math.PI) / 180;
@@ -15,8 +17,13 @@ function vnoise(x, z) {
   return (hash(xi, zi) * (1 - u) + hash(xi + 1, zi) * u) * (1 - v) + (hash(xi, zi + 1) * (1 - u) + hash(xi + 1, zi + 1) * u) * v;
 }
 
+export function placeBarricades(G, R) {
+  G.barrR = R;
+  for (const b of G.barricades) { b.x = Math.cos(b.angle) * R; b.z = Math.sin(b.angle) * R; b.group.position.set(b.x, 0, b.z); }
+}
+
 export function buildWorld(G) {
-  const W = G.world;
+  const W = G.world; G.barrR = BARR_R;
   const parts = { env: [], hills: null };
 
   // ---- sky dome ----
@@ -63,7 +70,15 @@ export function buildWorld(G) {
   }
   gg.setAttribute('color', new THREE.BufferAttribute(col, 3));
   gg.computeVertexNormals();
-  const ground = new THREE.Mesh(gg, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }));
+  const gmat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 });
+  const gUV = gg.attributes.position; const uv = new Float32Array(gUV.count * 2);
+  for (let i = 0; i < gUV.count; i++) { uv[i * 2] = gUV.getX(i) / 9; uv[i * 2 + 1] = gUV.getZ(i) / 9; }
+  gg.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  const tl = new THREE.TextureLoader();
+  const tex = (u, srgb) => tl.load(u, t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; if (srgb) t.colorSpace = THREE.SRGBColorSpace; gmat.needsUpdate = true; });
+  gmat.map = tex('assets/dirt_color.jpg', true); gmat.normalMap = tex('assets/dirt_normal.jpg', false);
+  gmat.normalScale.set(0.9, 0.9); gmat.color.setScalar(4.6);
+  const ground = new THREE.Mesh(gg, gmat);
   ground.receiveShadow = true;
   W.add(ground); G.ground = ground;
 
@@ -95,7 +110,7 @@ export function buildWorld(G) {
 
   // ---- rocks (cover + colliders) ----
   const rockMat = new THREE.MeshStandardMaterial({ color: 0x8c8470, roughness: 1, flatShading: true });
-  const rockSpots = [];
+  const rockSpots = [], rockPrims = [];
   for (let i = 0; i < 16; i++) {
     const a = rnd() * Math.PI * 2, r = 9 + rnd() * 27;
     let ok = true;
@@ -106,11 +121,27 @@ export function buildWorld(G) {
     rk.position.set(Math.cos(a) * r, s * 0.45, Math.sin(a) * r); rk.rotation.set(rnd() * 3, rnd() * 3, rnd() * 3); rk.scale.y = 0.7;
     rk.castShadow = true; rk.receiveShadow = true; W.add(rk);
     G.colliders.push({ x: rk.position.x, z: rk.position.z, r: s * 0.9 });
-    rockSpots.push(rk.position);
+    rockSpots.push(rk.position); rockPrims.push(rk);
   }
 
+  // real rock meshes (Draco GLB) replace the primitives when they load
+  try {
+    const dl = new DRACOLoader(); dl.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
+    const gl = new GLTFLoader(); gl.setDRACOLoader(dl);
+    const rocks = [];
+    Promise.all(['rock1', 'rock2', 'rock3'].map(n => gl.loadAsync('assets/' + n + '.glb').then(g => { let m = null; g.scene.traverse(o => { if (o.isMesh && !m) m = o; }); return m; }))).then(ms => {
+      if (ms.some(m => !m)) return;
+      rockSpots.forEach((p, i) => {
+        const src = ms[i % 3]; const m = new THREE.Mesh(src.geometry, src.material);
+        const sz = 1.3 + rnd() * 1.4; m.scale.setScalar(sz); m.position.set(p.x, 0.0, p.z); m.rotation.y = rnd() * 6; m.castShadow = true; m.receiveShadow = true; W.add(m);
+      });
+      for (const r of G.rockPrims || []) r.visible = false;
+    }).catch(() => {});
+  } catch (e) {}
+  G.rockPrims = rockPrims;
+
   // ---- dry grass tufts ----
-  const tufts = new THREE.InstancedMesh(new THREE.ConeGeometry(0.07, 0.4, 4), new THREE.MeshStandardMaterial({ color: 0xcdb460, roughness: 1 }), 900);
+  const tufts = new THREE.InstancedMesh(new THREE.ConeGeometry(0.035, 0.22, 3), new THREE.MeshStandardMaterial({ color: 0xcdb460, roughness: 1 }), 900);
   for (let i = 0; i < 900; i++) {
     const a = rnd() * Math.PI * 2, r = 5 + rnd() * 36;
     pp.set(Math.cos(a) * r, 0.3, Math.sin(a) * r); ee.set(0, rnd() * 6, (rnd() - 0.5) * 0.4); qq.setFromEuler(ee);
@@ -129,7 +160,7 @@ export function buildWorld(G) {
   for (let g = 0; g < GATES; g++) {
     const a = gateAngle(g);
     const grp = new THREE.Group();
-    grp.position.set(Math.cos(a) * BARR_R, 0, Math.sin(a) * BARR_R);
+    grp.position.set(Math.cos(a) * G.barrR, 0, Math.sin(a) * G.barrR);
     grp.rotation.y = -a + Math.PI / 2;
     const planks = [];
     for (let k = 0; k < 3; k++) {

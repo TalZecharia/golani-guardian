@@ -3,7 +3,7 @@ import { Sound } from './audio.js';
 import { FX } from './fx.js';
 import { Input, Gyro } from './input.js';
 import { Enemies, TYPES } from './enemies.js';
-import { buildWorld, GATES, gateAngle, ARENA_R, BARR_R, FENCE_R } from './world.js';
+import { buildWorld, placeBarricades, GATES, gateAngle, ARENA_R, BARR_R, FENCE_R } from './world.js';
 import { WEAPONS, WEAPON_ORDER, buildGun, buildGrenadeMesh } from './weapons.js';
 import { AR, AR_SCALE } from './ar.js';
 import { $, t, settings, saveSettings, applyLang, toast, banner, story, hideStory, show, hide, hitmark, vignette } from './ui.js';
@@ -29,7 +29,7 @@ const G = window.__game = {
   THREE, renderer, scene, camera, world, mode: 'normal', state: 'menu', paused: false,
   colliders: [], barricades: [], crates: [], tree: { hp: 1000, max: 1000, mesh: null },
   pp: { x: 9, z: 6 }, eyeY: EYE, wave: 0, points: 0, score: 0, slow: 1, arPlacing: false, quality: 'med',
-  player: { hp: 100, max: 100, lastHit: -99 }
+  player: { hp: 100, max: 100, lastHit: -99 }, arOff: { x: 0, z: 0 }, arBase: new THREE.Vector3(), spawnR: ARENA_R + 8
 };
 const sound = G.sound = new Sound();
 const input = new Input();
@@ -101,12 +101,16 @@ function applyModeVisuals(mode) {
   scene.fog = bg ? FOG : null;
   scene.background = bg ? new THREE.Color(0xe6d09c) : null;
   renderer.setClearAlpha(bg ? 1 : 0);
-  if (mode === 'xr') { world.scale.setScalar(AR_SCALE); camera.near = 0.01; camera.far = 60; sound.refDist = 4 * AR_SCALE; }
-  else { world.scale.setScalar(1); world.position.set(0, 0, 0); camera.near = 0.1; camera.far = 600; sound.refDist = 4; }
+  if (mode === 'xr') { world.scale.setScalar(AR_SCALE); camera.near = 0.05; camera.far = 200; sound.refDist = 4; G.spawnR = 24; placeBarricades(G, 11); G.arOff.x = G.arOff.z = 0; }
+  else { world.scale.setScalar(1); world.position.set(0, 0, 0); camera.near = 0.1; camera.far = 600; sound.refDist = 4; G.spawnR = ARENA_R + 8; placeBarricades(G, BARR_R); }
   camera.updateProjectionMatrix();
 }
 
 // ---------------- helpers ----------------
+function placeWorldAR() {
+  if (ar.anchorPos) G.arBase.copy(ar.anchorPos);
+  world.position.set(G.arBase.x + G.arOff.x, G.arBase.y, G.arBase.z + G.arOff.z); world.updateMatrixWorld(true);
+}
 function clampPlayer(p) {
   const r = Math.hypot(p.x, p.z); if (r > ARENA_R - 1.5) { p.x *= (ARENA_R - 1.5) / r; p.z *= (ARENA_R - 1.5) / r; }
   for (const c of G.colliders) {
@@ -300,15 +304,12 @@ function updateLook(dt) {
 function updateMove(dt) {
   const m = input.getMove();
   if (G.mode === 'xr') {
-    camera.getWorldPosition(V.a); world.updateMatrixWorld(true); world.worldToLocal(V.a);
-    const f = forwardFlat(V.b); const r = V.c.set(-f.z, 0, f.x);
-    const mv = 4.2 * dt; let dx = (f.x * m.y + r.x * m.x) * mv, dz = (f.z * m.y + r.z * m.x) * mv;
-    // the player is moved by sliding the world the opposite way
-    world.position.x -= dx * AR_SCALE; world.position.z -= dz * AR_SCALE; world.updateMatrixWorld(true);
+    // real-scale AR: you walk with your body; the stick slides the whole arena the other way
+    const f = forwardFlat(V.b), r = V.c.set(-f.z, 0, f.x), mv = 4.2 * dt;
+    G.arOff.x -= (f.x * m.y + r.x * m.x) * mv; G.arOff.z -= (f.z * m.y + r.z * m.x) * mv;
+    placeWorldAR();
     camera.getWorldPosition(V.a); world.worldToLocal(V.a);
-    const p = { x: V.a.x, z: V.a.z }, ox = p.x, oz = p.z; clampPlayer(p);
-    world.position.x -= (p.x - ox) * AR_SCALE; world.position.z -= (p.z - oz) * AR_SCALE;
-    G.pp.x = p.x; G.pp.z = p.z; G.eyeY = V.a.y; return;
+    G.pp.x = V.a.x; G.pp.z = V.a.z; G.eyeY = V.a.y; return;
   }
   const f = forwardFlat(V.b), r = V.c.set(-f.z, 0, f.x), sp = 4.3;
   G.pp.x += (f.x * m.y + r.x * m.x) * sp * dt; G.pp.z += (f.z * m.y + r.z * m.x) * sp * dt;
@@ -338,7 +339,7 @@ function startWave() {
 }
 function spawnOne() {
   const type = queue.shift(); const gate = G.activeGates[Math.floor(Math.random() * G.activeGates.length)];
-  const a = gateAngle(gate), r = ARENA_R + 8, lat = (Math.random() - 0.5) * 6;
+  const a = gateAngle(gate), r = G.spawnR, lat = (Math.random() - 0.5) * 6;
   const x = Math.cos(a) * r - Math.sin(a) * lat, z = Math.sin(a) * r + Math.cos(a) * lat;
   enemies.spawn(type, x, z, G.wave);
 }
@@ -449,7 +450,7 @@ async function startGame(mode) {
     try {
       applyModeVisuals('xr'); world.visible = false; G.arPlacing = true; G.state = 'placing';
       await ar.startXR(pos => {
-        world.position.copy(pos); world.visible = true; G.arPlacing = false;
+        G.arBase.copy(pos); G.arOff.x = G.arOff.z = 0; placeWorldAR(); world.visible = true; G.arPlacing = false;
         // start with the player on the arena's edge facing the tree
         G.pp.x = 0; G.pp.z = 0; beginPlay();
       }, () => { applyModeVisuals('normal'); world.visible = true; G.arPlacing = false; if (G.state !== 'menu' && G.state !== 'ended') toMenu(); });
@@ -482,7 +483,8 @@ function toMenu() {
 let menuA = 0;
 function frame(_, xrFrame) {
   const dt = Math.min(0.05, clock.getDelta());
-  if (G.mode === 'xr') { renderer.xr.updateCamera(camera); camera.updateMatrixWorld(true); if (xrFrame) ar.update(xrFrame); }
+  if (G.mode === 'xr') { renderer.xr.updateCamera(camera); camera.updateMatrixWorld(true); if (xrFrame) ar.update(xrFrame); if (G.state !== 'placing') placeWorldAR(); }
+  if (G.tree.mesh && G.tree.mesh.tree) G.tree.mesh.tree.update(clock.elapsedTime);
   if (G.state === 'menu' || G.state === 'ended') {
     menuA += dt * 0.12; camera.position.set(Math.cos(menuA) * 15, 4.3, Math.sin(menuA) * 15); camera.lookAt(0, 4.6, 0); if (gunRoot.visible) gunRoot.visible = false;
     fx.update(dt); enemies.update(dt * 0);

@@ -10,6 +10,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@dgreenheck/ez-tree": "^1.1.0",
     "esbuild": "^0.28.2",
     "three": "^0.170.0"
   }

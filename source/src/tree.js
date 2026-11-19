@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { Tree } from '@dgreenheck/ez-tree';
 
 // Tapered tube along a curve. radiusFn(t) -> radius at t in [0,1].
 function taperTube(points, radiusFn, mat, seg = 26, radial = 12) {
@@ -31,13 +32,18 @@ export function makeTree() {
   const bark = new THREE.MeshStandardMaterial({ color: 0x6b5238, roughness: 0.95 });
   const barkDark = new THREE.MeshStandardMaterial({ color: 0x4d3a28, roughness: 1 });
 
-  // Short, thick, slightly twisted trunk with flared base
-  const trunkPts = [
-    new THREE.Vector3(0, -0.4, 0), new THREE.Vector3(0.25, 0.9, 0.12),
-    new THREE.Vector3(-0.2, 2.1, -0.1), new THREE.Vector3(0.18, 3.1, 0.16),
-    new THREE.Vector3(0, 3.9, 0)
-  ];
-  group.add(taperTube(trunkPts, t => 0.78 + 0.75 * Math.pow(1 - t, 3) + 0.12 * (1 - t), bark, 30, 14));
+  // Realistic procedural oak (ez-tree, MIT): wide dome, short thick trunk like the Golani oak
+  const et = new Tree();
+  et.loadPreset('Oak Large');
+  et.options.leaves.tint = 0xe8ffc8;
+  const box0 = new THREE.Box3().setFromObject(et);
+  const bw = Math.max(box0.max.x - box0.min.x, box0.max.z - box0.min.z), bh = box0.max.y - box0.min.y;
+  et.scale.set(16 / bw, 8.6 / bh, 16 / bw);
+  et.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  group.add(et);
+  const leafMat = et.leavesMesh.material;
+  const canopy = null;
+  const rootMat = et.branchesMesh.material.clone(); rootMat.color = new THREE.Color(0xb59b86);
 
   // Exposed roots
   const rootN = 9;
@@ -51,48 +57,9 @@ export function makeTree() {
       d.clone().multiplyScalar(len * 0.65).setY(0.16),
       d.clone().multiplyScalar(len).setY(-0.15)
     ];
-    group.add(taperTube(pts, t => 0.5 * (1 - t) + 0.07, barkDark, 14, 8));
+    group.add(taperTube(pts, t => 0.5 * (1 - t) + 0.07, rootMat, 14, 8));
   }
 
-  // Main branches
-  const branches = [
-    { a: 0.3, out: 7.4, y: 3.0, low: true },
-    { a: 1.4, out: 6.4, y: 6.0 }, { a: 2.5, out: 6.8, y: 5.6 },
-    { a: 3.6, out: 6.0, y: 6.4 }, { a: 4.6, out: 6.6, y: 5.8 }, { a: 5.6, out: 5.8, y: 6.2 }
-  ];
-  for (const b of branches) {
-    const d = new THREE.Vector3(Math.cos(b.a), 0, Math.sin(b.a));
-    const pts = b.low ? [
-      new THREE.Vector3(0, 2.7, 0.1), d.clone().multiplyScalar(2.4).setY(3.5),
-      d.clone().multiplyScalar(5).setY(3.7), d.clone().multiplyScalar(b.out).setY(3.1)
-    ] : [
-      new THREE.Vector3(0, 3.3, 0), d.clone().multiplyScalar(b.out * 0.3).setY(4.3),
-      d.clone().multiplyScalar(b.out * 0.65).setY(b.y - 0.4), d.clone().multiplyScalar(b.out).setY(b.y)
-    ];
-    group.add(taperTube(pts, t => 0.5 * (1 - t) + 0.1, bark, 16, 8));
-  }
-
-  // Canopy: wide dome of low-poly foliage blobs
-  const blobGeo = new THREE.IcosahedronGeometry(1, 1);
-  const leafMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, flatShading: true, emissive: 0x2a3010 });
-  const N = 90;
-  const canopy = new THREE.InstancedMesh(blobGeo, leafMat, N);
-  canopy.castShadow = true; canopy.receiveShadow = true;
-  const palette = [0x4b6a2a, 0x5e7a30, 0x70803a, 0x86863c, 0x95883a, 0x55602a, 0x6a5a2c].map(c => new THREE.Color(c));
-  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), p = new THREE.Vector3(), s = new THREE.Vector3();
-  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  for (let i = 0; i < N; i++) {
-    let x, y, z;
-    do { x = rnd() * 2 - 1; y = rnd() * 2 - 1; z = rnd() * 2 - 1; } while (x * x + y * y + z * z > 1 || y < -0.35);
-    p.set(x * 7.6 + 0.8, 6.0 + y * 3.3 + (1 - Math.min(1, Math.hypot(x, z))) * 0.8, z * 7.4);
-    const sc = 1.7 + rnd() * 1.4;
-    s.set(sc * 1.1, sc * 0.78, sc * 1.1);
-    e.set(rnd() * 3, rnd() * 3, rnd() * 3); q.setFromEuler(e);
-    m.compose(p, q, s); canopy.setMatrixAt(i, m);
-    const col = palette[Math.floor(rnd() * palette.length)].clone().multiplyScalar(1.05 + rnd() * 0.35);
-    canopy.setColorAt(i, col);
-  }
-  group.add(canopy);
 
   // Wooden fence ring
   const fenceMat = new THREE.MeshStandardMaterial({ color: 0x8a6a42, roughness: 1 });
@@ -129,5 +96,5 @@ export function makeTree() {
   plaque.position.set(-2.6, 0.25, 3.0); plaque.rotation.y = 0.4; plaque.castShadow = true;
   group.add(plaque);
 
-  return { group, leafMat, canopy };
+  return { group, leafMat, canopy, tree: et };
 }
