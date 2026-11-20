@@ -68,6 +68,7 @@ const gunRoot = new THREE.Group(); camera.add(gunRoot);
 const gunLight = new THREE.PointLight(0xfff0d0, 2.2, 3, 1.5); gunLight.position.set(0.1, 0.25, -0.1); camera.add(gunLight);
 gunRoot.position.set(0.15, -0.19, -0.42);
 let gunMesh = null, muzzle = null;
+const muzzleLight = new THREE.PointLight(0xffb060, 0, 6, 1.5);
 const flashMat = new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
 const GUN_LEN = { pistol: 0.22, mp5: 0.5, m4: 0.85, ak: 0.88, shotgun: 1.0 };
 function customGun(id) {
@@ -97,13 +98,32 @@ function equipModel() {
   muzzle = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.2), flashMat);
   muzzle.position.set(0, 0.0, gunMesh.userData.muzzleZ - 0.05); muzzle.visible = false;
   const m2 = muzzle.clone(); m2.rotation.y = Math.PI / 2; muzzle.add(m2);
-  gunMesh.add(muzzle);
+  gunMesh.add(muzzle); muzzle.add(muzzleLight); muzzleLight.intensity = 0;
   gunRoot.add(gunMesh);
 }
 equipModel();
 
+// muzzle light (always present, intensity 0 when off => no shader recompiles) + pooled smoke puffs
+const smokeTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'); const g = x.createRadialGradient(32, 32, 2, 32, 32, 31); g.addColorStop(0, 'rgba(210,210,210,0.9)'); g.addColorStop(1, 'rgba(210,210,210,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
+const smokes = []; for (let i = 0; i < 10; i++) { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: smokeTex, transparent: true, depthWrite: false, opacity: 0 })); sp.visible = false; sp.userData = { t: 0, life: 1, v: new THREE.Vector3(), s0: 0.05, max: 0.1 }; scene.add(sp); smokes.push(sp); }
+let smokeI = 0, smokeSkip = 0;
+function puffSmoke(strength) {
+  if (!muzzle) return; const sp = smokes[smokeI++ % smokes.length], u = sp.userData;
+  muzzle.getWorldPosition(sp.position); camera.getWorldDirection(V.c);
+  u.t = 0; u.life = 0.6 + Math.random() * 0.4; u.s0 = 0.04 + 0.03 * strength; u.v.copy(V.c).multiplyScalar(0.15 + Math.random() * 0.2);
+  u.v.x += (Math.random() - 0.5) * 0.12; u.v.y += 0.18 + Math.random() * 0.12; u.v.z += (Math.random() - 0.5) * 0.12; u.max = 0.5 * (0.14 + 0.1 * strength);
+  sp.material.opacity = 0.3 * Math.min(1, 0.5 + strength * 0.5); sp.visible = true; sp.scale.setScalar(u.s0);
+}
+function updateSmoke(dt) {
+  for (const sp of smokes) { if (!sp.visible) continue; const u = sp.userData; u.t += dt; const k = u.t / u.life; if (k >= 1) { sp.visible = false; continue; }
+    sp.position.addScaledVector(u.v, dt); u.v.multiplyScalar(Math.pow(0.3, dt)); sp.scale.setScalar(u.s0 + (u.max - u.s0) * Math.sqrt(k)); sp.material.opacity = 0.3 * (1 - k) * (1 - k); }
+}
+// vibration: patterns per weapon; browsers without support (iOS Safari) simply do nothing
+const VIB = { pistol: 22, mp5: 9, m4: 14, ak: 20, shotgun: 55 };
+function buzz(p) { try { if (navigator.vibrate) navigator.vibrate(p); } catch (e) {} }
+
 // ---------------- state ----------------
-let cd = 0, reloading = 0, reloadDur = 0, latch = false, equipT = 0, flashT = 0, kickZ = 0, kickRot = 0, camKick = 0, shake = 0;
+let cd = 0, reloading = 0, reloadDur = 0, latch = false, equipT = 0, flashT = 0, kickZ = 0, kickRot = 0, camKick = 0, shake = 0, kickYaw = 0, kickRoll = 0, gshake = 0, flashSc = 1;
 let yaw = 0, pitch = 0, yawOff = 0, gyroCal = false, walkT = 0;
 let grenades = [], queue = [], spawnT = 0, prepT = 0, waveClearT = 0, lastTreeToast = -99, lastGrowl = 0, hudT = 0, perfT = 0, perfN = 0, perfSum = 0;
 const clock = new THREE.Clock();
@@ -199,13 +219,13 @@ G.damagePlayer = (n, e) => {
   killStreak = 0; n *= 0.75; G.player.hp -= n; G.player.lastHit = clock.elapsedTime;
   if (e && e.group) hitDirs.push({ dx: e.group.position.x - G.pp.x, dz: e.group.position.z - G.pp.z, t: performance.now() });
   vignette(); sound.hurt(); shake = Math.max(shake, 0.25);
-  if (navigator.vibrate) navigator.vibrate(35);
+  buzz([40, 30, 60]);
   if (G.player.hp <= 0) endGame(false, 'player');
 };
 G.damageTree = (n) => {
   if (G.state !== 'wave' && G.state !== 'prep') return;
   G.tree.hp = Math.max(0, G.tree.hp - n * (G.mode === 'xr' ? 0.6 : 1));
-  sound.treeHit(); shake = Math.max(shake, 0.06);
+  sound.treeHit(); shake = Math.max(shake, 0.06); buzz([70, 40, 110]);
   if (Math.random() < 0.5) fx.leaves(V.a.set((Math.random() - 0.5) * 8, 5 + Math.random() * 2, (Math.random() - 0.5) * 8), 5);
   if (clock.elapsedTime - lastTreeToast > 7) { lastTreeToast = clock.elapsedTime; toast(t('treeHit'), 1600); }
   if (G.tree.hp <= 0) endGame(false, 'tree');
@@ -225,7 +245,7 @@ G.onKill = (e, head) => {
   const p = e.group.position;
   fx.blood(V.a.set(p.x, 1.2 * e.def.scale, p.z), 14);
   sound.die(e.group.getWorldPosition(V.b.clone()), e.big);
-  if (navigator.vibrate) navigator.vibrate(12);
+  buzz(12);
   if (e.type === 'boss' || e.type === 'miniboss') { fx.explosion(V.c.set(p.x, 1.5, p.z), 4); }
 };
 let killStreak = 0, streakT = 0;
@@ -294,9 +314,14 @@ function drawThreats() {
 
 // ---------------- shooting ----------------
 function fire(w) {
-  inv.mag[inv.cur]--; cd = w.rate; flashT = 0.05; kickZ = w.kick; kickRot = w.recoil * 6; camKick += w.recoil;
-  shake = Math.max(shake, w.shake * 6);
-  sound.shot(w.id); if (navigator.vibrate) navigator.vibrate(w.id === 'shotgun' ? 25 : 8);
+  inv.mag[inv.cur]--; cd = w.rate; flashT = 0.055; flashSc = (0.75 + Math.random() * 0.6) * (ads ? 0.6 : 1);
+  const am = ads ? 0.55 : 1; // aiming steadies the gun
+  kickZ = w.kick * 1.7 * am; kickRot = w.recoil * 9 * am; camKick += w.recoil * 1.4 * am;
+  kickYaw += (Math.random() - 0.5) * w.recoil * 10 * am; kickRoll += (Math.random() - 0.5) * w.recoil * 14 * am;
+  shake = Math.max(shake, w.shake * 8 * am); gshake = Math.max(gshake, w.shake * 14 * am);
+  sound.shot(w.id); buzz(VIB[w.id] || 12);
+  if (muzzle) muzzleLight.intensity = 2.2 * flashSc;
+  smokeSkip -= w.rate; if (smokeSkip <= 0) { puffSmoke(Math.min(1.5, w.kick * 12)); smokeSkip = 0.12; }
   const R = aimRay(), ox = R.o.clone(), dir0 = R.d.clone(), right = R.r.clone(), up = R.u.clone();
   let anyHit = false, headHit = false, headKill = false;
   const bonusSpread = (input.getMove().x || input.getMove().y) ? 1.35 : 1;
@@ -334,14 +359,14 @@ function headText(kill) { const el = $('hsTxt'); el.textContent = kill ? 'ירי
 function startReload() {
   if (reloading > 0) return; const w = wstat(inv.cur);
   if (inv.mag[inv.cur] >= w.mag || inv.res[inv.cur] <= 0) return;
-  reloading = reloadDur = w.reload; sound.reload(w.reload);
+  reloading = reloadDur = w.reload; sound.reload(w.reload, inv.cur);
 }
 function switchWeapon() {
   if (inv.owned.length < 2) return;
   const i = (inv.owned.indexOf(inv.cur) + 1) % inv.owned.length; inv.cur = inv.owned[i];
   reloading = 0; equipT = 0.45; equipModelSoon = 0.22; ads = false; $('btnAds').classList.remove('on'); sound.swap();
   popText('⇄ ' + t(inv.cur), 'big'); $('btnSwitch').classList.add('pulse'); setTimeout(() => $('btnSwitch').classList.remove('pulse'), 500);
-  if (navigator.vibrate) navigator.vibrate(15);
+  buzz(15);
 }
 let equipModelSoon = 0;
 function throwGrenade() {
@@ -374,20 +399,21 @@ function updateWeapon(dt) {
   if (want && cd <= 0 && reloading <= 0 && equipT <= 0.1 && (w.auto || !latch)) {
     if (inv.mag[inv.cur] > 0) fire(w);
     else if (inv.res[inv.cur] > 0) startReload();
-    else if (!latch) { sound.click(); toast(t('refill'), 900); }
+    else if (!latch) { sound.dry(); buzz(6); toast(t('refill'), 900); }
     cd = Math.max(cd, 0.001);
   }
   latch = want;
   // viewmodel animation
-  kickZ *= Math.pow(0.0006, dt); kickRot *= Math.pow(0.001, dt);
+  kickZ *= Math.pow(0.0006, dt); kickRot *= Math.pow(0.001, dt); kickYaw *= Math.pow(0.002, dt); kickRoll *= Math.pow(0.002, dt); gshake *= Math.pow(0.0005, dt); updateSmoke(dt);
   const rl = reloading > 0 ? Math.sin(Math.PI * (1 - reloading / reloadDur)) : 0;
   const eq = equipT > 0 ? Math.sin(Math.PI * (equipT / 0.45)) : 0;
   adsK += ((ads ? 1 : 0) - adsK) * Math.min(1, dt * 12);
   if (G.mode !== 'xr') { const f = baseFov * (1 - 0.38 * adsK); if (Math.abs(camera.fov - f) > 0.05) { camera.fov = f; camera.updateProjectionMatrix(); } }
   const sway = Math.sin(walkT * 2) * 0.006 * (input.getMove().x || input.getMove().y ? 1 : 0.25);
-  gunRoot.position.set((0.15 + sway) * (1 - adsK), (-0.19 - rl * 0.16 - eq * 0.32 + Math.abs(Math.sin(walkT)) * 0.004) * (1 - adsK) + -0.098 * adsK, (-0.42 + kickZ) * (1 - adsK) + -0.36 * adsK);
-  gunRoot.rotation.set(kickRot - rl * 0.5 - eq * 0.5, 0, rl * 0.35);
-  if (muzzle) { flashT -= dt; muzzle.visible = flashT > 0; if (muzzle.visible) muzzle.rotation.z = Math.random() * 3; }
+  const gj = gshake * 0.05;
+  gunRoot.position.set((0.15 + sway) * (1 - adsK) + (Math.random() - 0.5) * gj, (-0.19 - rl * 0.16 - eq * 0.32 + Math.abs(Math.sin(walkT)) * 0.004) * (1 - adsK) + -0.098 * adsK + (Math.random() - 0.5) * gj, (-0.42 + kickZ) * (1 - adsK) + -0.36 * adsK);
+  gunRoot.rotation.set(kickRot - rl * 0.5 - eq * 0.5, kickYaw, rl * 0.35 + kickRoll);
+  if (muzzle) { flashT -= dt; muzzle.visible = flashT > 0; if (muzzle.visible) { muzzle.rotation.z = Math.random() * 3; muzzle.scale.setScalar(flashSc); } else muzzleLight.intensity = 0; }
 }
 
 // ---------------- player movement / look ----------------

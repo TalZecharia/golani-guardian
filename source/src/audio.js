@@ -95,23 +95,49 @@ export class Sound {
   }
 
   // ---- effects ----
+  // layered gunshot: sharp crack + body + low thump + room tail; every shot gets a slightly different pitch
+  _gun(p) {
+    const ctx = this.ctx; if (!ctx) return;
+    const t = ctx.currentTime, k = 0.93 + Math.random() * 0.14, v = 0.92 + Math.random() * 0.16;
+    this._noise(p.crackD, { type: 'highpass', f0: p.crackF * k, f1: p.crackF * 0.5 * k, gain: p.crack * v, attack: 0.001, when: t });
+    this._noise(p.bodyD, { type: 'bandpass', f0: p.bodyF0 * k, f1: p.bodyF1 * k, gain: p.body * v, q: 0.9, when: t });
+    this._tone(p.thF0 * k, p.thF1 * k, p.thD, { gain: p.th * v, attack: 0.002, when: t });
+    if (p.snap) this._tone(p.snap * k, p.snap * 0.3, 0.035, { type: 'square', gain: 0.12 * v, attack: 0.001, when: t });
+    this._noise(p.tailD, { type: 'lowpass', f0: p.tailF * k, f1: 150, gain: p.tail * v, attack: 0.01, when: t + 0.02 });
+  }
   shot(id) {
     if (!this.ctx) return;
     switch (id) {
-      case 'pistol': this._noise(0.16, { type: 'bandpass', f0: 1800, f1: 600, gain: 0.5 }); this._tone(190, 60, 0.12, { gain: 0.4 }); break;
-      case 'mp5': this._noise(0.1, { type: 'bandpass', f0: 2300, f1: 900, gain: 0.38 }); this._tone(230, 90, 0.08, { gain: 0.3 }); break;
-      case 'm4': this._noise(0.17, { f0: 3500, f1: 500, gain: 0.55 }); this._tone(150, 50, 0.14, { gain: 0.45 }); break;
-      case 'ak': this._noise(0.21, { f0: 3000, f1: 350, gain: 0.65 }); this._tone(120, 40, 0.18, { gain: 0.6 }); break;
-      case 'shotgun': this._noise(0.45, { f0: 2500, f1: 180, gain: 0.95 }); this._tone(95, 28, 0.32, { gain: 0.75 }); this._noise(0.12, { type: 'highpass', f0: 4000, gain: 0.3 }); break;
+      case 'pistol': this._gun({ crack: 0.5, crackD: 0.05, crackF: 3200, body: 0.5, bodyD: 0.12, bodyF0: 1800, bodyF1: 600, th: 0.45, thF0: 200, thF1: 60, thD: 0.12, snap: 1800, tail: 0.14, tailD: 0.28, tailF: 1500 }); break;
+      case 'mp5': this._gun({ crack: 0.4, crackD: 0.04, crackF: 3800, body: 0.36, bodyD: 0.09, bodyF0: 2400, bodyF1: 900, th: 0.3, thF0: 240, thF1: 90, thD: 0.08, snap: 2600, tail: 0.1, tailD: 0.18, tailF: 1800 }); break;
+      case 'm4': this._gun({ crack: 0.6, crackD: 0.06, crackF: 3000, body: 0.55, bodyD: 0.16, bodyF0: 3000, bodyF1: 500, th: 0.5, thF0: 150, thF1: 50, thD: 0.15, snap: 1400, tail: 0.2, tailD: 0.4, tailF: 1400 }); break;
+      case 'ak': this._gun({ crack: 0.75, crackD: 0.07, crackF: 2400, body: 0.7, bodyD: 0.22, bodyF0: 2600, bodyF1: 330, th: 0.7, thF0: 120, thF1: 38, thD: 0.2, snap: 900, tail: 0.28, tailD: 0.5, tailF: 1200 }); break;
+      case 'shotgun': this._gun({ crack: 0.7, crackD: 0.1, crackF: 2000, body: 1.0, bodyD: 0.4, bodyF0: 2400, bodyF1: 170, th: 0.9, thF0: 95, thF1: 28, thD: 0.34, tail: 0.4, tailD: 0.8, tailF: 900 }); break;
     }
   }
   click() { this._noise(0.04, { type: 'highpass', f0: 3000, gain: 0.25 }); }
-  reload(dur) {
+  // trigger pulled on an empty weapon: dry metallic click-clack
+  dry() {
+    if (!this.ctx) return; const t = this.ctx.currentTime;
+    this._noise(0.03, { type: 'highpass', f0: 4200, gain: 0.35, attack: 0.001, when: t });
+    this._tone(1300, 700, 0.03, { type: 'square', gain: 0.1, attack: 0.001, when: t });
+    this._noise(0.05, { type: 'bandpass', f0: 1500, gain: 0.3, attack: 0.001, when: t + 0.07 });
+    this._tone(520, 260, 0.05, { type: 'square', gain: 0.08, attack: 0.001, when: t + 0.07 });
+  }
+  // reload: magazine out, magazine in (thunk), then bolt / pump / slide depending on the weapon
+  reload(dur, id) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    this._noise(0.05, { type: 'highpass', f0: 2500, gain: 0.3, when: t + 0.1 });
-    this._noise(0.06, { type: 'bandpass', f0: 1200, gain: 0.35, when: t + dur * 0.55 });
-    this._noise(0.05, { type: 'highpass', f0: 3200, gain: 0.35, when: t + dur - 0.1 });
+    const clk = (at, f, g) => { this._noise(0.04, { type: 'highpass', f0: f, gain: g, attack: 0.001, when: t + at }); this._tone(f * 0.35, f * 0.15, 0.04, { type: 'square', gain: g * 0.3, attack: 0.001, when: t + at }); };
+    const thunk = (at, g) => { this._noise(0.09, { type: 'lowpass', f0: 900, f1: 200, gain: g, when: t + at }); this._tone(150, 60, 0.09, { gain: g * 0.8, attack: 0.002, when: t + at }); };
+    if (id === 'shotgun') {
+      const n = 3; for (let i = 0; i < n; i++) { const at = 0.2 + i * (dur - 0.9) / n; clk(at, 2200, 0.28); thunk(at + 0.03, 0.18); }
+      const p = dur - 0.45; thunk(p, 0.4); clk(p + 0.05, 1500, 0.35); clk(p + 0.2, 2600, 0.35);
+    } else {
+      clk(dur * 0.18, 2400, 0.3); thunk(dur * 0.18 + 0.02, 0.15);
+      thunk(dur * 0.58, 0.45); clk(dur * 0.58 + 0.02, 1800, 0.3);
+      const b = dur - 0.2; clk(b, 1400, 0.4); clk(b + 0.09, 2800, 0.35);
+    }
   }
   swap() { this._tone(520, 240, 0.07, { type: 'square', gain: 0.14 }); setTimeout(() => this._tone(900, 520, 0.06, { type: 'square', gain: 0.12 }), 110); }
   headshot() { this._tone(2400, 1800, 0.08, { type: 'triangle', gain: 0.26 }); this._tone(1200, 300, 0.18, { type: 'square', gain: 0.16 }); this._noise && this._noise(0.08, { type: 'highpass', f0: 3000, f1: 1500, gain: 0.2 }); }
