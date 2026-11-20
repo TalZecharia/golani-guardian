@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Sound } from './audio.js';
 import { FX } from './fx.js';
 import { Input, Gyro } from './input.js';
-import { Enemies, TYPES } from './enemies.js';
+import { Enemies, TYPES, blobTex } from './enemies.js';
 import { buildWorld, placeBarricades, GATES, gateAngle, ARENA_R, BARR_R, FENCE_R } from './world.js';
 import { WEAPONS, WEAPON_ORDER, buildGun, buildGrenadeMesh } from './weapons.js';
 import { AR } from './ar.js';
@@ -127,7 +127,7 @@ let cd = 0, reloading = 0, reloadDur = 0, latch = false, equipT = 0, flashT = 0,
 let yaw = 0, pitch = 0, yawOff = 0, gyroCal = false, walkT = 0;
 let grenades = [], queue = [], spawnT = 0, prepT = 0, waveClearT = 0, lastTreeToast = -99, lastGrowl = 0, hudT = 0, perfT = 0, perfN = 0, perfSum = 0;
 const clock = new THREE.Clock();
-const V = { a: new THREE.Vector3(), b: new THREE.Vector3(), c: new THREE.Vector3(), o: new THREE.Vector3(), d: new THREE.Vector3(), r: new THREE.Vector3(), u: new THREE.Vector3(), q: new THREE.Quaternion(), q2: new THREE.Quaternion(), e: new THREE.Euler(0, 0, 0, 'YXZ'), inv: new THREE.Matrix4() };
+const V = { c0: new THREE.Color(), a: new THREE.Vector3(), b: new THREE.Vector3(), c: new THREE.Vector3(), o: new THREE.Vector3(), d: new THREE.Vector3(), r: new THREE.Vector3(), u: new THREE.Vector3(), q: new THREE.Quaternion(), q2: new THREE.Quaternion(), e: new THREE.Euler(0, 0, 0, 'YXZ'), inv: new THREE.Matrix4() };
 const Y = new THREE.Vector3(0, 1, 0);
 
 // ---------------- quality ----------------
@@ -166,7 +166,19 @@ function applyModeVisuals(mode) {
   renderer.setClearAlpha(bg ? 1 : 0);
   if (mode === 'xr') { G.arH = settings.arH || 2.0; camera.near = 0.05; camera.far = 200; sound.refDist = 4; G.spawnR = 3.6; placeBarricades(G, 1.9); G.arOff.x = G.arOff.z = 0; applyArScale(); }
   else { setTreeK(1); world.scale.setScalar(1); world.position.set(0, 0, 0); camera.near = 0.1; camera.far = 600; sound.refDist = 4; G.spawnR = ARENA_R + 8; placeBarricades(G, BARR_R); }
+  warmLight(mode === 'xr');
   camera.updateProjectionMatrix();
+}
+// AR: warm, soft default lighting (light estimation, when the phone supports it, overrides intensity) + soft shadow disc under the tree
+let treeBlob = null;
+let origSun = null, origHemi = null;
+function warmLight(on) {
+  if (G.sun && !origSun) { origSun = G.sun.color.clone(); origHemi = G.hemi.color.clone(); }
+  if (G.hemi && origHemi) G.hemi.color.copy(on ? V.c0.set(0xfff1de) : origHemi);
+  if (G.sun && origSun) G.sun.color.copy(on ? V.c0.set(0xffe2b8) : origSun);
+  const tm = G.tree.mesh && G.tree.mesh.group;
+  if (tm && !treeBlob) { treeBlob = new THREE.Mesh(new THREE.PlaneGeometry(9, 9).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false, opacity: 0.8 })); treeBlob.position.y = 0.04; treeBlob.renderOrder = -1; tm.add(treeBlob); }
+  if (treeBlob) treeBlob.visible = on;
 }
 
 // ---------------- helpers ----------------
@@ -212,7 +224,7 @@ function aimRay() {
 }
 
 // ---------------- combat callbacks used by enemies ----------------
-G.growlAt = e => { const now = performance.now(); if (now - lastGrowl < 350) return; lastGrowl = now; const p = e.group.getWorldPosition(V.a.clone()); sound.growl(p, e.big); };
+G.growlAt = (e, near) => { const now = performance.now(); if (now - lastGrowl < (near ? 200 : 350)) return; lastGrowl = now; const p = e.group.getWorldPosition(V.a.clone()); sound.growl(p, e.big, near ? 1.5 : 1); };
 const hitDirs = [];
 G.damagePlayer = (n, e) => {
   if (G.state !== 'wave' && G.state !== 'prep') return;
@@ -225,7 +237,7 @@ G.damagePlayer = (n, e) => {
 G.damageTree = (n) => {
   if (G.state !== 'wave' && G.state !== 'prep') return;
   G.tree.hp = Math.max(0, G.tree.hp - n * (G.mode === 'xr' ? 0.6 : 1));
-  sound.treeHit(); shake = Math.max(shake, 0.06); buzz([70, 40, 110]);
+  sound.treeHit(); shake = Math.max(shake, 0.16); camKick += 0.004; buzz([70, 40, 110]);
   if (Math.random() < 0.5) fx.leaves(V.a.set((Math.random() - 0.5) * 8, 5 + Math.random() * 2, (Math.random() - 0.5) * 8), 5);
   if (clock.elapsedTime - lastTreeToast > 7) { lastTreeToast = clock.elapsedTime; toast(t('treeHit'), 1600); }
   if (G.tree.hp <= 0) endGame(false, 'tree');
@@ -323,7 +335,7 @@ function fire(w) {
   if (muzzle) muzzleLight.intensity = 2.2 * flashSc;
   smokeSkip -= w.rate; if (smokeSkip <= 0) { puffSmoke(Math.min(1.5, w.kick * 12)); smokeSkip = 0.12; }
   const R = aimRay(), ox = R.o.clone(), dir0 = R.d.clone(), right = R.r.clone(), up = R.u.clone();
-  let anyHit = false, headHit = false, headKill = false;
+  let anyHit = false, headHit = false, headKill = false, legHit = false;
   const bonusSpread = (input.getMove().x || input.getMove().y) ? 1.35 : 1;
   for (let k = 0; k < w.pellets; k++) {
     const a = Math.random() * Math.PI * 2, rr = Math.sqrt(Math.random()) * w.spread * bonusSpread * (ads ? 0.35 : 1);
@@ -345,17 +357,19 @@ function fire(w) {
       const pt = ox.clone().addScaledVector(dir, d);
       fx.blood(pt, hit.head ? 8 : 5);
       e.knock.addScaledVector(dir, Math.min(2.5, dmg * 0.04));
-      const killed = enemies.damage(e, dmg, hit.head);
-      anyHit = true; if (hit.head) { headHit = true; if (killed) headKill = true; }
+      const killed = enemies.damage(e, dmg, hit.head, hit.part);
+      anyHit = true; if (hit.head) { headHit = true; if (killed) headKill = true; } else if (hit.part === 'leg') legHit = true;
+      if (hit.head) { fx.blood(pt, 6); fx.spark(pt, 3); } else if (hit.part === 'leg') fx.dust(pt.clone().setY(0.1), 3);
     } else if (dir.y < -0.01) {
       const tt = -ox.y / dir.y; if (tt > 0 && tt < 120) fx.dust(ox.clone().addScaledVector(dir, tt).setY(0.05), 3);
     }
   }
-  if (anyHit) { hitmark(headHit); if (headHit) { sound.headshot(); headText(headKill); } else sound.hit(false); }
+  if (anyHit) { hitmark(headHit); hitFlash(headHit ? 'head' : ''); if (headHit) { sound.headshot(); if (headKill) { sound.headKill(); shake = Math.max(shake, 0.12); buzz([10, 20, 25]); } headText(headKill); } else { sound.thud(legHit ? 'leg' : 'body'); if (legHit) popText('מעד!', ''); } }
   if (inv.mag[inv.cur] <= 0 && inv.res[inv.cur] > 0) startReload();
 }
 let hsT = 0;
 function headText(kill) { const el = $('hsTxt'); el.textContent = kill ? 'ירייה בראש! חיסול' : 'ירייה בראש!'; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show'); clearTimeout(hsT); hsT = setTimeout(() => el.classList.remove('show'), 700); }
+function hitFlash(cls) { const h = $('hflash'); if (!h) return; h.className = cls ? 'on ' + cls : 'on'; clearTimeout(hitFlash.t); hitFlash.t = setTimeout(() => { h.className = ''; }, 70); }
 function startReload() {
   if (reloading > 0) return; const w = wstat(inv.cur);
   if (inv.mag[inv.cur] >= w.mag || inv.res[inv.cur] <= 0) return;
@@ -470,7 +484,7 @@ function startWave() {
   G.activeGates = []; const n = Math.min(GATES, 2 + Math.floor(G.wave / 2));
   const all = [0, 1, 2, 3, 4, 5].sort(() => Math.random() - 0.5); G.activeGates = all.slice(0, n);
   for (const c of G.crates) c.uses = 3;
-  hide('shop'); hide('btnShopT'); banner(`${t('waveBanner')} ${G.wave}`); sound.horn(G.wave === 5 || G.wave === 10); sound.intensity = Math.min(1, 0.4 + G.wave * 0.06);
+  hide('shop'); hide('btnShopT'); banner(`${t('waveBanner')} ${G.wave}`); sound.horn(G.wave === 5 || G.wave === 10); sound.siren(G.wave === 5 || G.wave === 10); shake = Math.max(shake, 0.35); buzz([120, 60, 120, 60, 200]); startTutorial(); sound.intensity = Math.min(1, 0.4 + G.wave * 0.06);
   if (G.wave === 5 || G.wave === 10) setTimeout(() => banner(t('bossBanner')), 2700);
 }
 function spawnOne() {
@@ -485,6 +499,27 @@ function startPrep(first) {
   show('shop'); show('btnShopT'); renderShop();
   const lines = t('waveLines'); const line = lines[Math.min(G.wave, lines.length - 1)];
   story(line, 5200);
+}
+// ---- mood: crowd murmur, danger heartbeat, first-wave tutorial ----
+let heartT = 0, dangerOn = false, tutTimers = [];
+function updateMood(dt) {
+  const inWave = G.state === 'wave';
+  let lvl = 0;
+  if (inWave) for (const e of enemies.list) { if (e.state === 'dying') continue; const d = Math.hypot(e.group.position.x, e.group.position.z); lvl += Math.max(0, 1 - d / (G.mode === 'xr' ? 6 : 28)); }
+  moodT -= dt; if (moodT <= 0) { moodT = 0.25; sound.setAmbient(Math.min(1, lvl / 5)); }
+  const low = (G.state === 'wave' || G.state === 'prep') && (G.tree.hp / G.tree.max < 0.3 || G.player.hp / (G.player.max || 200) < 0.25);
+  if (low !== dangerOn) { dangerOn = low; $('danger').classList.toggle('on', low); }
+  if (low) { heartT -= dt; if (heartT <= 0) { heartT = 0.95; sound.heart(); buzz([30, 60, 30]); } }
+}
+let moodT = 0;
+function startTutorial() {
+  tutTimers.forEach(clearTimeout); tutTimers = [];
+  if (G.wave !== 1) return;
+  const say = (ms, txt) => tutTimers.push(setTimeout(() => { if (G.state === 'wave' && G.wave === 1) toast(txt, 3600); }, ms));
+  say(1500, G.mode === 'xr' ? 'סובב את הטלפון כדי לכוון' : 'הזז את הטלפון או גרור כדי לכוון');
+  say(6000, 'הקש על הכפתור האדום כדי לירות. כוון לראש!');
+  say(13000, 'ירייה בראש = חיסול מיידי. אל תתנו להם להגיע לעץ');
+  say(21000, 'נגמרה התחמושת? ↻ טעינה, או ⇄ להחליף נשק');
 }
 function updateWaves(dt) {
   if (G.state === 'prep') { prepT -= dt; $('count').textContent = Math.max(0, Math.ceil(prepT)); if (prepT <= 0) startWave(); return; }
@@ -671,7 +706,7 @@ function frame(_, xrFrame) {
     if (G.state !== 'prep-wait' || true) {
       updateLook(dt); updateMove(dt);
       if (G.mode === 'xr') { camera.updateMatrixWorld(true); }
-      updateWeapon(dt); updateGrenades(dt); enemies.update(dt); updateWaves(dt); fx.update(dt); updateCrates(); drawThreats();
+      updateWeapon(dt); updateGrenades(dt); enemies.update(dt); updateWaves(dt); updateMood(dt); fx.update(dt); updateCrates(); drawThreats();
       if (G.player.hp < G.player.max && clock.elapsedTime - G.player.lastHit > 5) G.player.hp = Math.min(G.player.max, G.player.hp + 8 * dt);
       sound.updateListener(camera);
       hudT -= dt; if (hudT <= 0) { hudT = 0.1; updateHUD(); }

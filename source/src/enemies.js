@@ -110,6 +110,11 @@ function playAct(e, name) {
   const prev = e.acts[e.act]; a.reset().setEffectiveWeight(1).fadeIn(0.2).play(); if (prev && prev !== a) prev.fadeOut(0.2); e.act = name;
 }
 
+// soft contact shadow used in AR (no real ground there)
+const blobTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'); const g = x.createRadialGradient(32, 32, 2, 32, 32, 31); g.addColorStop(0, 'rgba(0,0,0,0.55)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
+const blobGeo = new THREE.PlaneGeometry(1.3, 1.3).rotateX(-Math.PI / 2);
+const blobMat = new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false });
+export { blobTex };
 export class Enemies {
   constructor(G) { this.G = G; this.list = []; }
 
@@ -126,10 +131,11 @@ export class Enemies {
       hp: def.hp * hpMul, max: def.hp * hpMul,
       speed: def.speed * 0.727 * (0.92 + Math.random() * 0.2) * (1 + 0.015 * wave), dmg: def.dmg * (1 + 0.05 * (wave - 1)),
       state: 'walk', t: Math.random() * 6, atk: 0, flash: 0, slam: 5 + Math.random() * 2, summon: 12, dead: 0,
-      mixer: z0.mixer || null, acts: z0.acts || null, act: null, deathLen: 0,
+      stun: 0, stumble: 0, blob: null, mixer: z0.mixer || null, acts: z0.acts || null, act: null, deathLen: 0,
       big: type === 'heavy' || type === 'boss' || type === 'miniboss', growl: 2 + Math.random() * 6, knock: new THREE.Vector3()
     };
     e.group.position.set(x, 0, z);
+    { const b = new THREE.Mesh(blobGeo, blobMat); b.position.y = 0.03; b.renderOrder = -1; b.visible = this.G.mode === 'xr'; e.blob = b; e.group.add(b); }
     this.G.world.add(e.group);
     if (e.mixer) { playAct(e, type === 'fast' ? 'run' : 'walk'); e.mixer.update(Math.random() * 2); }
     this.list.push(e);
@@ -152,22 +158,23 @@ export class Enemies {
         if (t > maxDist) continue;
         if (!best || t < best.t || (isHead && t < best.t + 0.4 && !best.head)) {
           if (best && best.e === e && best.head && !isHead) continue;
-          best = { e, t, head: isHead };
+          best = { e, t, head: isHead, part: isHead ? 'head' : (h < s * 0.9 ? 'leg' : 'body') };
         }
       }
     }
     return best;
   }
 
-  damage(e, amount, head) {
+  damage(e, amount, head, part) {
     if (e.state === 'dying') return false;
     e.hp -= amount; e.flash = 0.12;
+    if (!head && !e.big) { if (part === 'leg') { e.stun = Math.max(e.stun, 1.1); e.stumble = 1; } else e.stun = Math.max(e.stun, 0.3); }
     if (e.hp <= 0) { this.kill(e, head); return true; }
     return false;
   }
 
   kill(e, head) {
-    e.state = 'dying'; e.dead = 0;
+    e.state = 'dying'; e.dead = 0; e.headKill = !!head; if (head) e.knock.multiplyScalar(2.2);
     if (e.mixer && e.acts.death) { if (e.acts.walk) e.acts.walk.fadeOut(0.1); if (e.acts.attack) e.acts.attack.fadeOut(0.1); e.acts.death.reset().play(); e.deathLen = e.acts.death.getClip().duration; }
     this.G.onKill(e, head);
   }
@@ -178,19 +185,21 @@ export class Enemies {
       const e = list[i], g = e.group, p = g.position, P = e.parts;
       if (e.state === 'dying') {
         e.dead += dt;
-        if (e.mixer) e.mixer.update(dt);
-        if (!(e.mixer && e.deathLen)) g.rotation.x = -Math.min(1.5, e.dead * 3.2);
+        if (e.mixer) e.mixer.update(dt * (e.headKill ? 1.6 : 1));
+        if (e.knock.lengthSq() > 0.0004) { p.x += e.knock.x * dt; p.z += e.knock.z * dt; e.knock.multiplyScalar(Math.max(0, 1 - dt * 4)); }
+        if (!(e.mixer && e.deathLen)) g.rotation.x = -Math.min(1.5, e.dead * (e.headKill ? 5 : 3.2));
         const life = e.deathLen ? e.deathLen + 1.5 : 2.8;
         if (e.dead > life - 1.3) p.y -= dt * 0.5;
         if (e.dead > life) { G.world.remove(g); list.splice(i, 1); }
         continue;
       }
-      e.t += dt; e.atk -= dt; e.flash = Math.max(0, e.flash - dt);
+      e.t += dt; e.atk -= dt; e.flash = Math.max(0, e.flash - dt); e.stun = Math.max(0, e.stun - dt);
       const r = Math.hypot(p.x, p.z);
       const dTree = Math.hypot(p.x, p.z);
       const dxP = pl.x - p.x, dzP = pl.z - p.z, dP = Math.hypot(dxP, dzP);
       // growl
-      e.growl -= dt; if (e.growl <= 0) { e.growl = 3 + Math.random() * 6; if (G.sound && Math.random() < 0.5) G.growlAt(e); }
+      const near = Math.min(dP, Math.hypot(p.x, p.z) * 0.8) < 9 * (G.mode === 'xr' ? (G.arS || 0.8) : 1) ? 1 : 0;
+      e.growl -= dt; if (e.growl <= 0) { e.growl = near ? 1.6 + Math.random() * 2 : 4 + Math.random() * 6; if (G.sound && (near || Math.random() < 0.5)) G.growlAt(e, near); }
 
       // --- decide goal ---
       let gx = 0, gz = 0, chasing = false;
@@ -236,7 +245,7 @@ export class Enemies {
       }
 
       // --- move ---
-      let sp = e.speed * speedK * (G.slow || 1);
+      let sp = e.speed * speedK * (G.slow || 1) * (e.stun > 0 ? (e.stumble ? 0.2 : 0.55) : 1);
       let vx = dx * sp, vz = dz * sp;
       // separation
       for (let k = 0; k < list.length; k++) {
@@ -273,6 +282,11 @@ export class Enemies {
       }
       const sc = e.def.scale * (1 + e.flash * 0.35);
       g.scale.setScalar(sc);
+      // lurching: stumble when a leg is hit, menacing sway when close
+      if (e.stun <= 0) e.stumble = 0;
+      const lean = e.stumble ? Math.sin(e.stun * 14) * 0.25 : (dP < 6 || dTree < 7 ? Math.sin(e.t * 5) * 0.07 : 0);
+      g.rotation.z += (lean - g.rotation.z) * Math.min(1, dt * 10);
+      if (e.blob) e.blob.visible = G.mode === 'xr';
     }
   }
 

@@ -141,6 +141,28 @@ export class Sound {
   }
   swap() { this._tone(520, 240, 0.07, { type: 'square', gain: 0.14 }); setTimeout(() => this._tone(900, 520, 0.06, { type: 'square', gain: 0.12 }), 110); }
   headshot() { this._tone(2400, 1800, 0.08, { type: 'triangle', gain: 0.26 }); this._tone(1200, 300, 0.18, { type: 'square', gain: 0.16 }); this._noise && this._noise(0.08, { type: 'highpass', f0: 3000, f1: 1500, gain: 0.2 }); }
+  // flesh impact: body = dull thud, leg = thud + crack, head handled by headshot()
+  thud(part) { this._tone(160, 60, 0.09, { gain: 0.3, attack: 0.002 }); this._noise(0.07, { type: 'lowpass', f0: 1200, f1: 300, gain: 0.25 }); if (part === 'leg') this._noise(0.05, { type: 'highpass', f0: 2500, gain: 0.22, when: this.ctx ? this.ctx.currentTime + 0.03 : 0 }); }
+  // head kill: wet crunch + low boom
+  headKill(pos) { if (!this.ctx) return; const dest = pos ? this._panner(pos) : this.sfx; this._noise(0.12, { type: 'bandpass', f0: 1800, f1: 500, gain: 0.5, dest }); this._tone(90, 30, 0.3, { gain: 0.5, dest }); }
+  // tree in danger: heartbeat
+  heart() { if (!this.ctx) return; const t = this.ctx.currentTime; this._tone(70, 40, 0.14, { gain: 0.6, attack: 0.01, when: t }); this._tone(60, 35, 0.16, { gain: 0.5, attack: 0.01, when: t + 0.22 }); }
+  // wave start siren: rising / falling wail
+  siren(boss) {
+    if (!this.ctx) return; const t = this.ctx.currentTime, lo = boss ? 300 : 420, hi = boss ? 520 : 760;
+    for (let i = 0; i < 2; i++) { this._tone(lo, hi, 0.55, { type: 'sawtooth', gain: 0.16, lp: 1400, attack: 0.08, when: t + i * 0.6 }); this._tone(hi, lo, 0.55, { type: 'sawtooth', gain: 0.14, lp: 1400, attack: 0.08, when: t + i * 0.6 + 0.3 }); }
+  }
+  // zombie crowd bed: low murmur that swells as they close in (level 0..1)
+  setAmbient(level) {
+    if (!this.ctx) return;
+    if (!this._amb) {
+      const ctx = this.ctx, src = ctx.createBufferSource(); src.buffer = this.noiseBuf; src.loop = true;
+      const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 180; f.Q.value = 1.2;
+      const lfo = ctx.createOscillator(), lg = ctx.createGain(); lfo.frequency.value = 0.35; lg.gain.value = 70; lfo.connect(lg); lg.connect(f.frequency); lfo.start();
+      const g = ctx.createGain(); g.gain.value = 0; src.connect(f); f.connect(g); g.connect(this.sfx); src.start(); this._amb = g;
+    }
+    this._amb.gain.setTargetAtTime(Math.min(1, Math.max(0, level)) * 0.55, this.ctx.currentTime, 0.4);
+  }
   hit(head) { this._tone(head ? 1500 : 900, head ? 800 : 500, 0.07, { type: 'square', gain: head ? 0.18 : 0.12 }); }
   hurt() { this._noise(0.25, { f0: 500, f1: 120, gain: 0.7 }); this._tone(90, 50, 0.2, { gain: 0.5 }); }
   treeHit() { this._tone(110, 60, 0.18, { type: 'triangle', gain: 0.5 }); this._noise(0.12, { f0: 700, f1: 200, gain: 0.35 }); }
@@ -162,11 +184,11 @@ export class Sound {
     this._noise(0.9, { f0: 2200, f1: 80, gain: 1.0, dest });
     this._tone(80, 25, 0.7, { gain: 0.9, dest });
   }
-  growl(pos, big) {
+  growl(pos, big, loud = 1) {
     if (!this.ctx) return;
     const dest = pos ? this._panner(pos) : this.sfx;
     const base = (big ? 45 : 70) + Math.random() * 40;
-    const o = this._tone(base, base * 0.7, 0.6 + Math.random() * 0.4, { type: 'sawtooth', gain: 0.18, lp: 380, dest, attack: 0.08 });
+    const o = this._tone(base, base * 0.7, 0.6 + Math.random() * 0.4, { type: 'sawtooth', gain: 0.18 * loud, lp: 380 + 120 * loud, dest, attack: 0.08 });
     if (o) { const lfo = this.ctx.createOscillator(); const lg = this.ctx.createGain(); lfo.frequency.value = 9 + Math.random() * 6; lg.gain.value = base * 0.25; lfo.connect(lg); lg.connect(o.frequency); lfo.start(); lfo.stop(this.ctx.currentTime + 1.2); }
     this._noise(0.4, { type: 'bandpass', f0: 500, f1: 250, gain: 0.08, dest });
   }
