@@ -26,6 +26,9 @@ canvas#c{position:absolute;inset:0;width:100%;height:100%;display:block;touch-ac
 #btnGren{right:176px;bottom:100px;width:58px;height:58px}
 #btnSwitch{right:26px;bottom:140px;width:136px;height:50px;border-radius:26px;flex-direction:row;gap:6px;background:rgba(242,195,91,.28);border-color:var(--gold);font-size:13px;padding:0 10px}#btnSwitch svg{width:20px;height:20px;flex:none}#btnSwitch .sw{display:flex;flex-direction:column;line-height:1.15;text-align:center}#btnSwitch .sw b{font-size:14px}#btnSwitch .sw small{opacity:.75;font-size:11px}
 #btnAds{right:240px;bottom:112px;width:58px;height:58px;font-size:12px}#btnAds.on{background:rgba(242,195,91,.65);border-color:var(--gold)}#btnSwitch.pulse{background:rgba(242,195,91,.8);transform:scale(1.08)}#btnAct{right:250px;bottom:40px;width:70px;height:70px;background:rgba(95,208,106,.5);border-color:#bff5c4;animation:pulse 1s infinite}
+#btnPause{right:60px;top:10px;width:40px;height:40px;position:absolute;font-size:16px;font-weight:900;letter-spacing:-2px}
+#zones{position:absolute;inset:0;pointer-events:none;z-index:4;transition:opacity .6s}#zones.hidden{display:block!important;opacity:0}
+.zn{position:absolute;border:2px dashed rgba(255,255,255,.55);border-radius:18px;background:rgba(255,255,255,.06);color:#fff;font-weight:800;font-size:15px;text-align:center;display:flex;align-items:center;justify-content:center;text-shadow:0 1px 5px #000;animation:zp 1.4s ease-in-out infinite}.zl{left:2%;top:42%;bottom:6%;width:36%}.zr{left:42%;right:2%;top:16%;bottom:50%}@keyframes zp{50%{background:rgba(255,255,255,.14)}}
 #btnSettings{right:12px;top:10px;width:40px;height:40px;position:absolute}
 @keyframes pulse{50%{transform:scale(1.08)}}
 #joyBase{position:absolute;width:120px;height:120px;margin:-60px 0 0 -60px;border-radius:50%;border:2px solid rgba(255,255,255,.35);background:rgba(255,255,255,.08);display:none;pointer-events:none}
@@ -145,6 +148,7 @@ body.vr.xr #c{position:absolute;width:100%;height:100%;transform:none}
       <button class="btn" id="btnAds"><span>כוונת</span></button>
       <button class="btn hidden" id="btnAct"><span data-t="refill">תחמושת</span></button>
       <button class="btn hidden" id="btnShopT" style="right:12px;top:58px;width:40px;height:40px;position:absolute"><svg viewBox="0 0 24 24"><path d="M7 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM1 2v2h2l3.6 7.6-1.4 2.4A2 2 0 0 0 7 17h12v-2H7.4l1.1-2h7.5a2 2 0 0 0 1.7-1l3.6-6.5A1 1 0 0 0 20.4 4H5.2l-.9-2zM17 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg></button>
+      <button class="btn" id="btnPause">II</button><div id="zones" class="hidden"><div class="zn zl">גע וגרור כאן<br>כדי לזוז</div><div class="zn zr">גרור כאן כדי<br>להסתכל סביב</div></div>
       <button class="btn" id="btnSettings"><svg viewBox="0 0 24 24"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7 7 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7 7 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7 7 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7 7 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg></button>
     </div>
     <div id="calib" class="hidden"><div class="cbox"><div class="ctitle">קבע את גובה העץ (הזומבים יותאמו אליו)</div><div class="row"><input type="range" id="calH" min="0.6" max="3" step="0.05" value="2"><b id="calV"></b></div><div class="btns"><button class="cta" id="btnCalGo">התחל משחק</button></div></div></div>
@@ -191,8 +195,9 @@ body.vr.xr #c{position:absolute;width:100%;height:100%;transform:none}
         <div class="row"><span data-t="arSize">גודל AR</span><input type="range" id="setArSize" min="0.6" max="3" step="0.05" value="2"></div>
         <div class="row"><span data-t="volume">עוצמה</span><input type="range" id="setVol" min="0" max="1" step="0.05" value="0.8"></div>
         </div>
+        <button class="cta sec hidden" id="btnQuit">יציאה לתפריט הראשי</button>
         <button class="cta sec hidden" id="btnReplant">שתול את העץ מחדש (AR)</button>
-        <button class="cta" id="btnSetClose" data-t="close">סגור</button>
+        <button class="cta" id="btnSetClose">המשך משחק</button>
       </div>
     </div>
 

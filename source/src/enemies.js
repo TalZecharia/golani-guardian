@@ -271,7 +271,9 @@ export class Enemies {
       if (e.mixer) {
         const attacking = e.atk > 0.55 && speedK <= 0.1;
         playAct(e, attacking ? 'attack' : (speedK < 0.1 ? 'idle' : (e.type === 'fast' ? 'run' : 'walk')));
-        e.mixer.update(dt * (speedK > 0.1 ? Math.max(0.6, e.speed / 2.0) : 1));
+        // distant zombies animate at half rate (saves skinning cost)
+        const mdt = dt * (speedK > 0.1 ? Math.max(0.6, e.speed / 2.0) : 1);
+        if (dP > 16 && G.mode !== 'xr') { e.accDt = (e.accDt || 0) + mdt; e.fr = !e.fr; if (e.fr) { e.mixer.update(e.accDt); e.accDt = 0; } } else { e.mixer.update(mdt + (e.accDt || 0)); e.accDt = 0; }
       } else {
       const w = e.t * (2.2 + e.speed * 1.6) * (speedK > 0.1 ? 1 : 0.3);
       P.legL.rotation.x = Math.sin(w) * 0.8; P.legR.rotation.x = -Math.sin(w) * 0.8;

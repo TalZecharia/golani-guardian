@@ -99,11 +99,12 @@ export class Sound {
   _gun(p) {
     const ctx = this.ctx; if (!ctx) return;
     const t = ctx.currentTime, k = 0.93 + Math.random() * 0.14, v = 0.92 + Math.random() * 0.16;
+    const skipTail = t - (this._lastTail || -9) < 0.25; if (!skipTail) this._lastTail = t; // fast auto fire: fewer audio nodes
     this._noise(p.crackD, { type: 'highpass', f0: p.crackF * k, f1: p.crackF * 0.5 * k, gain: p.crack * v, attack: 0.001, when: t });
     this._noise(p.bodyD, { type: 'bandpass', f0: p.bodyF0 * k, f1: p.bodyF1 * k, gain: p.body * v, q: 0.9, when: t });
     this._tone(p.thF0 * k, p.thF1 * k, p.thD, { gain: p.th * v, attack: 0.002, when: t });
     if (p.snap) this._tone(p.snap * k, p.snap * 0.3, 0.035, { type: 'square', gain: 0.12 * v, attack: 0.001, when: t });
-    this._noise(p.tailD, { type: 'lowpass', f0: p.tailF * k, f1: 150, gain: p.tail * v, attack: 0.01, when: t + 0.02 });
+    if (!skipTail) this._noise(p.tailD, { type: 'lowpass', f0: p.tailF * k, f1: 150, gain: p.tail * v, attack: 0.01, when: t + 0.02 });
   }
   shot(id) {
     if (!this.ctx) return;

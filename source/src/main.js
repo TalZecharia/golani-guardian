@@ -18,7 +18,9 @@ function treeH0() {
   return G._th;
 }
 const treeK = () => G.arH / (treeH0() * arScale());
-function applyArScale() { world.scale.setScalar(arScale()); G.arS = arScale(); setTreeK(treeK()); }
+// AR: zombies appear ~2.2 x tree height + 0.8 m away (clamped 4-6 m real) => time to aim, scope and go for headshots
+function arSpawnReal() { return Math.max(4, Math.min(6, 2.2 * G.arH + 0.8)); }
+function applyArScale() { world.scale.setScalar(arScale()); G.arS = arScale(); setTreeK(treeK()); if (G.mode === 'xr') G.spawnR = arSpawnReal() / G.arS; }
 import { loadAssets, A } from './assets.js';
 import { $, t, settings, saveSettings, applyLang, toast, banner, story, hideStory, show, hide, hitmark, vignette } from './ui.js';
 
@@ -131,13 +133,13 @@ const V = { c0: new THREE.Color(), a: new THREE.Vector3(), b: new THREE.Vector3(
 const Y = new THREE.Vector3(0, 1, 0);
 
 // ---------------- quality ----------------
-const Q = { high: { pr: 2, shadow: 2048, parts: 600, alive: 26 }, med: { pr: 1.5, shadow: 1024, parts: 400, alive: 22 }, low: { pr: 1, shadow: 0, parts: 220, alive: 16 } };
+const Q = { high: { pr: 1.75, shadow: 2048, parts: 600, alive: 26 }, med: { pr: 1.25, shadow: 1024, parts: 400, alive: 22 }, low: { pr: 0.9, shadow: 0, parts: 200, alive: 16 } };
 function applyQuality(level) {
   G.quality = level; const q = Q[level];
   renderer.setPixelRatio(Math.min(devicePixelRatio, q.pr));
   renderer.shadowMap.enabled = q.shadow > 0; G.sun.castShadow = q.shadow > 0;
   if (q.shadow) { G.sun.shadow.mapSize.set(q.shadow, q.shadow); if (G.sun.shadow.map) { G.sun.shadow.map.dispose(); G.sun.shadow.map = null; } }
-  fx.limit = q.parts; G.maxAlive = q.alive;
+  fx.limit = q.parts; G.maxAlive = q.alive; G.lowQ = level === 'low';
   resize();
 }
 let rotDismissed = false;
@@ -165,7 +167,7 @@ function applyModeVisuals(mode) {
   scene.background = bg ? new THREE.Color(0xe6d09c) : null;
   renderer.setClearAlpha(bg ? 1 : 0);
   if (mode === 'xr') { G.arH = settings.arH || 2.0; camera.near = 0.05; camera.far = 200; sound.refDist = 4; G.spawnR = 3.6; placeBarricades(G, 1.9); G.arOff.x = G.arOff.z = 0; applyArScale(); }
-  else { setTreeK(1); world.scale.setScalar(1); world.position.set(0, 0, 0); camera.near = 0.1; camera.far = 600; sound.refDist = 4; G.spawnR = ARENA_R + 8; placeBarricades(G, BARR_R); }
+  else { setTreeK(1); world.scale.setScalar(1); world.position.set(0, 0, 0); camera.near = 0.1; camera.far = 600; sound.refDist = 4; G.spawnR = ARENA_R + 22; placeBarricades(G, BARR_R); }
   warmLight(mode === 'xr');
   camera.updateProjectionMatrix();
 }
@@ -332,7 +334,7 @@ function fire(w) {
   kickYaw += (Math.random() - 0.5) * w.recoil * 10 * am; kickRoll += (Math.random() - 0.5) * w.recoil * 14 * am;
   shake = Math.max(shake, w.shake * 8 * am); gshake = Math.max(gshake, w.shake * 14 * am);
   sound.shot(w.id); buzz(VIB[w.id] || 12);
-  if (muzzle) muzzleLight.intensity = 2.2 * flashSc;
+  if (muzzle && !G.lowQ) muzzleLight.intensity = 2.2 * flashSc;
   smokeSkip -= w.rate; if (smokeSkip <= 0) { puffSmoke(Math.min(1.5, w.kick * 12)); smokeSkip = 0.12; }
   const R = aimRay(), ox = R.o.clone(), dir0 = R.d.clone(), right = R.r.clone(), up = R.u.clone();
   let anyHit = false, headHit = false, headKill = false, legHit = false;
@@ -516,7 +518,8 @@ function startTutorial() {
   tutTimers.forEach(clearTimeout); tutTimers = [];
   if (G.wave !== 1) return;
   const say = (ms, txt) => tutTimers.push(setTimeout(() => { if (G.state === 'wave' && G.wave === 1) toast(txt, 3600); }, ms));
-  say(1500, G.mode === 'xr' ? 'סובב את הטלפון כדי לכוון' : 'הזז את הטלפון או גרור כדי לכוון');
+  if (G.mode !== 'xr') { tutTimers.push(setTimeout(() => { if (G.state === 'wave' && G.wave === 1) show('zones'); }, 800)); tutTimers.push(setTimeout(() => hide('zones'), 9500)); }
+  say(1500, G.mode === 'xr' ? 'סובב את הטלפון כדי לכוון' : 'גרור באצבע בצד ימין כדי להסתכל, ובצד שמאל כדי לזוז');
   say(6000, 'הקש על הכפתור האדום כדי לירות. כוון לראש!');
   say(13000, 'ירייה בראש = חיסול מיידי. אל תתנו להם להגיע לעץ');
   say(21000, 'נגמרה התחמושת? ↻ טעינה, או ⇄ להחליף נשק');
@@ -686,6 +689,7 @@ function endGame(win, cause) {
   if (ar.session) ar.endXR();
 }
 function toMenu() {
+  G.paused = false; tutTimers.forEach(clearTimeout); tutTimers = []; dangerOn = false; $('danger').classList.remove('on'); sound.setAmbient(0); for (const g of grenades) world.remove(g.m); grenades = []; queue = []; hide('zones'); $('toast').classList.remove('show'); clock.getDelta();
   G.state = 'menu'; input.enabled = false; hide('end'); hide('hud'); hide('shop'); hideStory(); hide('settings');
   ar.stopCamera(); applyModeVisuals('normal'); world.visible = true; G.arPlacing = false; enemies.clear(); $('hiTxt').textContent = settings.hi; show('menu'); sound.intensity = 0.1;
 }
@@ -713,7 +717,7 @@ function frame(_, xrFrame) {
     }
   }
   // auto quality
-  perfSum += dt; perfN++; if (perfSum > 2.5) { const avg = perfSum / perfN; if (settings.quality === 'auto' && avg > 0.042 && G.quality !== 'low') applyQuality(G.quality === 'high' ? 'med' : 'low'); perfSum = 0; perfN = 0; }
+  if (G.state === 'wave') { perfSum += Math.min(dt, 0.2); perfN++; if (perfSum > 1.6) { const avg = perfSum / perfN; if (settings.quality === 'auto' && avg > 0.034 && G.quality !== 'low') { applyQuality(G.quality === 'high' ? 'med' : 'low'); toast('הורדתי מעט את איכות הגרפיקה כדי שיהיה חלק', 2200); } perfSum = 0; perfN = 0; } } else { perfSum = 0; perfN = 0; }
   renderer.render(scene, camera);
 }
 
@@ -727,10 +731,15 @@ function setupUI() {
   $('setArSize').value = settings.arH || 2.0; $('setArSize').oninput = e => { settings.arH = +e.target.value; saveSettings(); if (G.mode === 'xr') { G.arH = settings.arH; applyArScale(); } };
   $('setSens').oninput = e => { settings.sens = +e.target.value; saveSettings(); };
   $('setVol').oninput = e => { settings.vol = +e.target.value; sound.setVolume(settings.vol); saveSettings(); };
-  const openSet = () => { $('btnReplant').classList.toggle('hidden', G.mode !== 'xr'); show('settings'); if (G.state === 'prep' || G.state === 'wave') G.paused = true; };
+  const inGame = () => ['wave', 'prep', 'placing', 'calib'].includes(G.state);
+  const openSet = () => { $('btnReplant').classList.toggle('hidden', G.mode !== 'xr'); $('btnQuit').classList.toggle('hidden', !inGame()); armQuit(false); show('settings'); if (G.state === 'prep' || G.state === 'wave') G.paused = true; };
   $('btnMenuSettings').onclick = () => { sound.init(); sound.ui(); openSet(); };
   $('btnSettings').onclick = openSet;
   $('btnReplant').onclick = startReplant;
+  let quitArm = false, quitT = 0;
+  const armQuit = on => { quitArm = on; clearTimeout(quitT); $('btnQuit').textContent = on ? 'בטוח? לחץ שוב כדי לצאת' : 'יציאה לתפריט הראשי'; if (on) quitT = setTimeout(() => armQuit(false), 5500); };
+  $('btnQuit').onclick = () => { if (!quitArm) { armQuit(true); return; } armQuit(false); toMenu(); };
+  $('btnPause').onclick = () => { if (inGame()) openSet(); };
   $('btnSetClose').onclick = () => { hide('settings'); G.paused = false; clock.getDelta(); };
   $('btnRotOk').onclick = () => { rotDismissed = true; $('rotate').classList.remove('on'); };
   $('btnPlay').onclick = () => { tryLock(); startGame('normal'); };
