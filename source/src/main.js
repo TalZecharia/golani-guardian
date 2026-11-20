@@ -437,7 +437,9 @@ function updateWeapon(dt) {
 function updateLook(dt) {
   const l = input.takeLook(); const sens = 0.0042 * settings.sens * (1 - 0.5 * adsK);
   if (G.mode === 'xr') { // pose comes from WebXR; a finger drag only raises/lowers the aim (crosshair + shots), clamped
-    if (l.dy) arAim = Math.max(-0.5, Math.min(0.5, arAim - l.dy * sens * 0.7));
+    if (l.dy) { arAim = Math.max(-0.5, Math.min(0.5, arAim - l.dy * sens * 0.7)); arDragT = clock.elapsedTime; }
+    // finger released: ease back to straight ahead in ~0.2 s
+    if (input.lookId === null && (input.fireId === null || clock.elapsedTime - arDragT > 0.15) && arAim) { arAim *= Math.exp(-dt * 18); if (Math.abs(arAim) < 0.002) arAim = 0; }
     const el = $('cross'), px = -Math.tan(arAim) * camera.projectionMatrix.elements[5] * OR.h / 2;
     el.style.transform = `translateY(${px.toFixed(1)}px)`; $('hitmark').style.transform = el.style.transform; return;
   }
@@ -519,7 +521,7 @@ function updateMood(dt) {
   if (low !== dangerOn) { dangerOn = low; $('danger').classList.toggle('on', low); }
   if (low) { heartT -= dt; if (heartT <= 0) { heartT = 0.95; sound.heart(); buzz([30, 60, 30]); } }
 }
-let moodT = 0, arAim = 0;
+let moodT = 0, arAim = 0, arDragT = 0;
 function startTutorial() {
   tutTimers.forEach(clearTimeout); tutTimers = [];
   if (G.wave !== 1) return;
