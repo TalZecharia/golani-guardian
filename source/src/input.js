@@ -20,8 +20,10 @@ export class Input {
   _bind() {
     const L = this.layer;
     L.addEventListener('pointerdown', e => {
-      if (!this.enabled || document.body.classList.contains('xr')) return;
+      if (!this.enabled) return;
+      const xr = document.body.classList.contains('xr');
       e.preventDefault(); const P = mapPt(e.clientX, e.clientY);
+      if (xr) { if (this.lookId === null) { this.lookId = e.pointerId; this._lx = P.x; this._ly = P.y; try { L.setPointerCapture(e.pointerId); } catch (_) {} } return; }
       if (P.x < OR.w * 0.42 && this.joyId === null) {
         this.joyId = e.pointerId; this.joyOrigin = { x: P.x, y: P.y };
         this.base.style.left = P.x + 'px'; this.base.style.top = P.y + 'px'; this.base.classList.add('on');

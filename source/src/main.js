@@ -218,6 +218,7 @@ function aimRay() {
   camera.updateMatrixWorld(true);
   camera.getWorldPosition(V.o); camera.getWorldDirection(V.d);
   V.r.setFromMatrixColumn(camera.matrixWorld, 0); V.u.setFromMatrixColumn(camera.matrixWorld, 1);
+  if (G.mode === 'xr' && arAim) { const c = Math.cos(arAim), s = Math.sin(arAim); V.a.copy(V.d).multiplyScalar(c).addScaledVector(V.u, s); V.b.copy(V.u).multiplyScalar(c).addScaledVector(V.d, -s); V.d.copy(V.a); V.u.copy(V.b); }
   if (G.mode === 'xr') {
     world.updateMatrixWorld(true); V.inv.copy(world.matrixWorld).invert();
     V.o.applyMatrix4(V.inv); V.d.transformDirection(V.inv); V.r.transformDirection(V.inv); V.u.transformDirection(V.inv);
@@ -435,7 +436,12 @@ function updateWeapon(dt) {
 // ---------------- player movement / look ----------------
 function updateLook(dt) {
   const l = input.takeLook(); const sens = 0.0042 * settings.sens * (1 - 0.5 * adsK);
-  if (G.mode === 'xr') return; // pose comes from WebXR
+  if (G.mode === 'xr') { // pose comes from WebXR; a finger drag only raises/lowers the aim (crosshair + shots), clamped
+    if (l.dy) arAim = Math.max(-0.5, Math.min(0.5, arAim - l.dy * sens * 0.7));
+    const el = $('cross'), px = -Math.tan(arAim) * camera.projectionMatrix.elements[5] * OR.h / 2;
+    el.style.transform = `translateY(${px.toFixed(1)}px)`; $('hitmark').style.transform = el.style.transform; return;
+  }
+  if (arAim) { arAim = 0; $('cross').style.transform = ''; $('hitmark').style.transform = ''; }
   const useG = settings.gyro && gyro.active;
   if (useG) {
     const qd = gyro.quaternion();
@@ -513,13 +519,13 @@ function updateMood(dt) {
   if (low !== dangerOn) { dangerOn = low; $('danger').classList.toggle('on', low); }
   if (low) { heartT -= dt; if (heartT <= 0) { heartT = 0.95; sound.heart(); buzz([30, 60, 30]); } }
 }
-let moodT = 0;
+let moodT = 0, arAim = 0;
 function startTutorial() {
   tutTimers.forEach(clearTimeout); tutTimers = [];
   if (G.wave !== 1) return;
   const say = (ms, txt) => tutTimers.push(setTimeout(() => { if (G.state === 'wave' && G.wave === 1) toast(txt, 3600); }, ms));
   if (G.mode !== 'xr') { tutTimers.push(setTimeout(() => { if (G.state === 'wave' && G.wave === 1) show('zones'); }, 800)); tutTimers.push(setTimeout(() => hide('zones'), 9500)); }
-  say(1500, G.mode === 'xr' ? 'סובב את הטלפון כדי לכוון' : 'גרור באצבע בצד ימין כדי להסתכל, ובצד שמאל כדי לזוז');
+  say(1500, G.mode === 'xr' ? 'סובב את הטלפון כדי לכוון. גרור אצבע למעלה/למטה כדי להגביה או להנמיך את הכוונת' : 'גרור באצבע בצד ימין כדי להסתכל, ובצד שמאל כדי לזוז');
   say(6000, 'הקש על הכפתור האדום כדי לירות. כוון לראש!');
   say(13000, 'ירייה בראש = חיסול מיידי. אל תתנו להם להגיע לעץ');
   say(21000, 'נגמרה התחמושת? ↻ טעינה, או ⇄ להחליף נשק');
